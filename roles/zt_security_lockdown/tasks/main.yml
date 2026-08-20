@@ -1,0 +1,36 @@
+---
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - guid | default('') | length > 0
+      - zt_security_lockdown_namespace | default('') | length > 0
+    fail_msg: >-
+      zt_security_lockdown requires guid and zt_security_lockdown_namespace
+      (sandbox_openshift_namespace) to be set.
+    quiet: true
+
+- name: Apply NetworkPolicy to lock down the sandbox namespace
+  kubernetes.core.k8s:
+    host: "{{ zt_security_lockdown_openshift_api_url }}"
+    api_key: "{{ zt_security_lockdown_openshift_api_key }}"
+    validate_certs: "{{ zt_security_lockdown_validate_certs }}"
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: "{{ zt_security_lockdown_policy_name }}"
+        namespace: "{{ zt_security_lockdown_namespace }}"
+        labels:
+          guid: "{{ guid }}"
+          creator: rhpds.zerotouch.zt_security_lockdown
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Ingress
+          - Egress
+        ingress: "{{ zt_security_lockdown_default_ingress_rules + zero_touch_ingress_lockdown_rules }}"
+        egress: "{{ zt_security_lockdown_default_egress_rules + zero_touch_egress_lockdown_rules }}"
+  register: r_zt_security_lockdown
+  retries: 10
+  delay: 5
+  until: r_zt_security_lockdown is not failed

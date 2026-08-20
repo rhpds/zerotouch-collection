@@ -1,0 +1,52 @@
+---
+- name: Verify
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sandbox_openshift_namespace: zt-containers-test
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"
+  tasks:
+    - name: Look up the Deployment that should have been created
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ sandbox_openshift_namespace }}"
+        name: demo
+      register: r_deploy
+
+    - name: Assert the Deployment exists and is Available
+      ansible.builtin.assert:
+        that:
+          - r_deploy.resources | length == 1
+          - (r_deploy.resources[0].status.availableReplicas | default(0)) == 1
+        fail_msg: "zt_containers did not create a working Deployment: {{ r_deploy.resources }}"
+
+    - name: Look up the Service that should have been created
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        namespace: "{{ sandbox_openshift_namespace }}"
+        name: demo
+      register: r_svc
+
+    - name: Assert the Service exists
+      ansible.builtin.assert:
+        that:
+          - r_svc.resources | length == 1
+        fail_msg: "zt_containers did not create the expected Service: {{ r_svc.resources }}"
+
+    - name: Look up the Route that should have been created (structural only — kind has no real router)
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ sandbox_openshift_namespace }}"
+        name: demo
+      register: r_route
+
+    - name: Assert the Route object was accepted by the API server
+      ansible.builtin.assert:
+        that:
+          - r_route.resources | length == 1
+        fail_msg: "zt_containers did not create the expected Route object: {{ r_route.resources }}"

@@ -1,0 +1,15 @@
+# Ansible Galaxy / collection build & install artifacts
+.ansible/
+*.tar.gz
+
+# tox / Python
+.tox/
+__pycache__/
+*.pyc
+.cache/
+
+# Molecule ephemeral state
+.molecule/
+
+# Ansible run artifacts
+*.retry

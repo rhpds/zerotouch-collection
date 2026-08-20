@@ -1,0 +1,19 @@
+---
+- name: Destroy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kind_cluster_name: zt-zerotouch-molecule-lockdown
+  tasks:
+    - name: Check whether docker is available
+      ansible.builtin.command: sh -c "command -v docker"
+      register: r_docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Delete the kind cluster
+      ansible.builtin.command: kind delete cluster --name {{ kind_cluster_name }}
+      failed_when: false
+      environment:
+        KIND_EXPERIMENTAL_PROVIDER: "{{ omit if r_docker_check.rc == 0 else 'podman' }}"

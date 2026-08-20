@@ -1,0 +1,37 @@
+---
+# Runs as a separate ansible-playbook process from converge.yml. Relies on
+# provisioner.config_options.defaults.fact_caching (jsonfile) in molecule.yml
+# so the cacheable facts zt_base_config publishes actually persist here —
+# this is the same mechanism the role relies on for AgnosticD v2 (see
+# roles/zt_base_config/README.md's "Open question — deferred to Phase 2").
+# A failure here would be a real, useful signal about that mechanism.
+- name: Verify
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Assert the URL-construction logic produced the expected raw content path
+      vars:
+        _expected: https://raw.githubusercontent.com/rhpds/zt-ans-bu-eda-netbox/main/config/
+      ansible.builtin.assert:
+        that:
+          - zt_base_config_git_config_directory | default('') == _expected
+        fail_msg: >-
+          Expected cached fact zt_base_config_git_config_directory to equal
+          {{ _expected }}, got
+          {{ zt_base_config_git_config_directory | default('UNDEFINED') }} —
+          check that fact_caching persisted across the converge/verify boundary.
+
+    - name: Assert the gitea sidecar was parsed out of containers
+      ansible.builtin.assert:
+        that:
+          - containers | default([]) | selectattr('name', 'equalto', 'gitea') | list | length == 1
+        fail_msg: "Expected a 'gitea' entry in containers, got: {{ containers | default('UNDEFINED') }}"
+
+    - name: Assert networks/instances/lockdown-rule output facts are all present
+      ansible.builtin.assert:
+        that:
+          - zero_touch_egress_lockdown_rules is defined
+          - zero_touch_ingress_lockdown_rules is defined
+          - instances is defined
+          - networks is defined
+        fail_msg: "One or more zt_base_config output facts did not persist via the fact cache."

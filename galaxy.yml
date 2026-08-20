@@ -1,0 +1,31 @@
+---
+namespace: rhpds
+name: zerotouch
+version: 0.1.0
+readme: README.md
+authors:
+  - RHPDS Team
+description: >-
+  Zero Touch (ZT) specific Ansible roles for AgnosticD v2 — dynamic per-lab
+  config loading, CNV network lockdown, and sidecar container provisioning.
+  Roles with an existing v2 equivalent (student/lab user creation, SSH setup,
+  LiteMaaS keys, showroom deployment) are intentionally NOT duplicated here —
+  see README.md.
+license:
+  - GPL-2.0-or-later
+tags:
+  - zerotouch
+  - agnosticd
+  - rhdp
+  - infrastructure
+  - cloud
+repository: https://github.com/rhpds/zerotouch-collection
+documentation: https://github.com/rhpds/zerotouch-collection/blob/main/README.md
+homepage: https://github.com/rhpds/zerotouch-collection
+issues: https://github.com/rhpds/zerotouch-collection/issues
+dependencies:
+  kubernetes.core: ">=2.4.0"
+build_ignore:
+  - .git
+  - .gitignore
+  - .ansible

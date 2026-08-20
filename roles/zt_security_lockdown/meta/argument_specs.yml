@@ -1,0 +1,111 @@
+---
+argument_specs:
+  main:
+    short_description: >-
+      Lock down a Zero Touch sandbox namespace with a NetworkPolicy that
+      only allows the traffic Zero Touch's bastion/showroom setup needs.
+    description: >-
+      Ports redhat-cop/agnosticd's
+      ansible/configs/zero-touch-base-rhel/lock_bastion_security_group_openshift_cnv.yml
+      to AgnosticD v2. Applies a single namespace-wide NetworkPolicy
+      (podSelector: {}) combining a fixed default rule set with any
+      lab-specific rules from zero_touch_ingress_lockdown_rules /
+      zero_touch_egress_lockdown_rules (see zt_base_config).
+    options:
+      zt_security_lockdown_namespace:
+        type: str
+        required: true
+        description: >-
+          Namespace to apply the NetworkPolicy to. Defaults to
+          sandbox_openshift_namespace (the same namespace the CNV VMs and
+          showroom already live in).
+      zt_security_lockdown_policy_name:
+        type: str
+        default: "zt-lockdown-{{ guid }}"
+        description: Name of the NetworkPolicy object.
+      zt_security_lockdown_openshift_api_url:
+        type: str
+        description: OpenShift API URL. Defaults to sandbox_openshift_api_url.
+      zt_security_lockdown_openshift_api_key:
+        type: str
+        no_log: true
+        description: OpenShift API token. Defaults to sandbox_openshift_api_key.
+      zt_security_lockdown_validate_certs:
+        type: bool
+        default: false
+        description: >-
+          Whether to validate TLS certs on OpenShift API calls. Defaults to
+          false for self-signed sandbox cluster CAs.
+      zt_security_lockdown_default_ingress_rules:
+        type: list
+        elements: dict
+        default:
+          - from:
+              - ipBlock:
+                  cidr: "0.0.0.0/0"
+                  except: []
+            ports:
+              - protocol: TCP
+                port: 80
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 8080
+              - protocol: TCP
+                port: 7171
+              - protocol: TCP
+                port: 8081
+              - protocol: TCP
+                port: 9000
+          - ports:
+              - protocol: TCP
+                port: 22
+            from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: showroom
+        description: >-
+          Baseline ingress rules always applied, ported verbatim from v1's
+          default_vars_openshift_cnv.yaml.
+      zt_security_lockdown_default_egress_rules:
+        type: list
+        elements: dict
+        default:
+          - ports:
+              - protocol: UDP
+                port: 5353
+              - protocol: TCP
+                port: 5353
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: openshift-dns
+          - ports:
+              - protocol: TCP
+                port: 22
+            to:
+              - podSelector:
+                  matchLabels:
+                    kubevirt.io: virt-launcher
+          - ports:
+              - protocol: TCP
+                port: 7171
+              - protocol: TCP
+                port: 8081
+              - protocol: TCP
+                port: 9000
+        description: >-
+          Baseline egress rules always applied, ported verbatim from v1's
+          default_vars_openshift_cnv.yaml. Note: this list has no explicit
+          rule allowing egress to the OpenShift API server (typically
+          443/6443) — see the role README for details.
+      zero_touch_ingress_lockdown_rules:
+        type: list
+        elements: dict
+        default: []
+        description: Extra per-lab ingress rules, merged with the defaults above.
+      zero_touch_egress_lockdown_rules:
+        type: list
+        elements: dict
+        default: []
+        description: Extra per-lab egress rules, merged with the defaults above.

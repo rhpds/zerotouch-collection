@@ -1,0 +1,9 @@
+---
+zt_base_config_content_git_repo: "{{ ocp4_workload_showroom_content_git_repo | default('') }}"
+zt_base_config_content_git_repo_ref: "{{ ocp4_workload_showroom_content_git_repo_ref | default('main') }}"
+zt_base_config_firewall_file: firewall.yaml
+zt_base_config_instances_file: instances.yaml
+zt_base_config_networks_file: networks.yaml
+zt_base_config_lookup_errors: warn
+zt_base_config_fetch_retries: 5
+zt_base_config_fetch_delay: 3

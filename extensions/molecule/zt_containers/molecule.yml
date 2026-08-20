@@ -1,0 +1,24 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ${MOLECULE_PROJECT_DIRECTORY}/tests/static/collections-requirements.yml
+driver:
+  name: default
+platforms:
+  - name: zt-zerotouch-molecule-containers
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      zt-zerotouch-molecule-containers:
+        ansible_connection: local
+scenario:
+  test_sequence:
+    - dependency
+    - create
+    - converge
+    - verify
+    - destroy
+verifier:
+  name: ansible

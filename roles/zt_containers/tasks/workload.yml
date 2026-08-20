@@ -1,0 +1,202 @@
+---
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - guid | default('') | length > 0
+      - zt_containers_namespace | default('') | length > 0
+      - >-
+        (containers | selectattr('routes', 'defined') | list | length == 0)
+        or (sandbox_openshift_apps_domain | default('') | length > 0)
+    fail_msg: >-
+      zt_containers requires guid and zt_containers_namespace
+      (sandbox_openshift_namespace) to be set, and sandbox_openshift_apps_domain
+      to be set when any container declares routes.
+    quiet: true
+
+- name: Assert container names are unique
+  ansible.builtin.assert:
+    that:
+      - containers | map(attribute='name') | list | length
+        == containers | map(attribute='name') | unique | list | length
+    fail_msg: >-
+      zt_containers requires each entry in containers[] to have a unique
+      name; duplicate names would cause Deployments/pod lookups to collide.
+    quiet: true
+
+- name: Deploy each container entry as its own Deployment
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ zt_container.name }}"
+        namespace: "{{ zt_containers_namespace }}"
+        labels:
+          guid: "{{ guid }}"
+          app.kubernetes.io/name: "{{ zt_container.name }}"
+          creator: rhpds.zerotouch.zt_containers
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: "{{ zt_container.name }}"
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "{{ zt_container.name }}"
+              guid: "{{ guid }}"
+          spec:
+            containers:
+              - name: "{{ zt_container.name }}"
+                image: "{{ zt_container.image }}"
+                ports: "{{ zt_container.ports | default(omit) }}"
+                env: "{{ zt_container.environment | default({}) | dict2items(key_name='name', value_name='value') }}"
+                volumeMounts: "{{ zt_container.volumeMounts | default(omit) }}"
+                resources:
+                  requests:
+                    memory: "{{ zt_container.memory | default('256Mi') }}"
+                    cpu: "{{ zt_container.cpu | default('100m') }}"
+                  limits:
+                    memory: "{{ zt_container.memory | default('256Mi') }}"
+                    cpu: "{{ zt_container.cpu | default('500m') }}"
+            volumes: "{{ zt_container.volumes | default(omit) }}"
+  register: r_zt_container_deploy
+  retries: 10
+  delay: 5
+  until: r_zt_container_deploy is not failed
+  loop: "{{ containers }}"
+  loop_control:
+    loop_var: zt_container
+    label: "{{ zt_container.name }}"
+
+- name: Wait for each container's Deployment to be Available
+  when: zt_containers_wait_ready | bool
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ zt_container.name }}"
+    namespace: "{{ zt_containers_namespace }}"
+    wait: true
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: "{{ zt_containers_wait_timeout }}"
+  loop: "{{ containers }}"
+  loop_control:
+    loop_var: zt_container
+    label: "{{ zt_container.name }}"
+
+- name: Create a Service for each container entry that declares one
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ zt_pair[1].name }}"
+        namespace: "{{ zt_containers_namespace }}"
+        labels:
+          guid: "{{ guid }}"
+          creator: rhpds.zerotouch.zt_containers
+      spec:
+        selector:
+          app.kubernetes.io/name: "{{ zt_pair[0].name }}"
+        ports: "{{ zt_pair[1].ports }}"
+  register: r_zt_container_service
+  retries: 10
+  delay: 5
+  until: r_zt_container_service is not failed
+  loop: "{{ containers | subelements('services', skip_missing=True) }}"
+  loop_control:
+    loop_var: zt_pair
+    label: "{{ zt_pair[1].name }}"
+
+- name: Create a Route for each container entry that declares one
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: "{{ zt_pair[1].name }}"
+        namespace: "{{ zt_containers_namespace }}"
+        labels:
+          guid: "{{ guid }}"
+          creator: rhpds.zerotouch.zt_containers
+      spec:
+        host: "{{ zt_pair[1].host }}-{{ guid }}.{{ sandbox_openshift_apps_domain }}"
+        to:
+          kind: Service
+          name: "{{ zt_pair[1].service }}"
+        port:
+          targetPort: "{{ zt_pair[1].targetPort }}"
+        tls: >-
+          {{ {'termination': (zt_pair[1].tls_termination | default('edge')) | capitalize}
+             if zt_pair[1].tls | default(false) else omit }}
+  register: r_zt_container_route
+  retries: 10
+  delay: 5
+  until: r_zt_container_route is not failed
+  loop: "{{ containers | subelements('routes', skip_missing=True) }}"
+  loop_control:
+    loop_var: zt_pair
+    label: "{{ zt_pair[1].name }}"
+
+- name: Find the pod for each container that declares init commands
+  kubernetes.core.k8s_info:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    api_version: v1
+    kind: Pod
+    namespace: "{{ zt_containers_namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/name={{ zt_container.name }}"
+  register: r_zt_containers_pods
+  retries: 20
+  delay: 5
+  until: >-
+    r_zt_containers_pods.resources | default([])
+    | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+  loop: "{{ containers | selectattr('commands', 'defined') | list }}"
+  loop_control:
+    loop_var: zt_container
+    label: "{{ zt_container.name }}"
+
+- name: Run one-time init commands inside each container that declares them
+  kubernetes.core.k8s_exec:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    namespace: "{{ zt_containers_namespace }}"
+    pod: >-
+      {{ ((r_zt_containers_pods.results
+          | selectattr('zt_container.name', 'equalto', zt_pair[0].name)
+          | first).resources
+          | selectattr('status.phase', 'equalto', 'Running')
+          | sort(attribute='metadata.creationTimestamp', reverse=true)
+          | first).metadata.name }}
+    container: "{{ zt_pair[0].name }}"
+    command:
+      - /bin/sh
+      - -c
+      - "{{ zt_pair[1] }}"
+  register: r_zt_container_commands
+  no_log: true
+  retries: "{{ zt_containers_command_retries }}"
+  delay: "{{ zt_containers_command_delay }}"
+  until: r_zt_container_commands is not failed
+  loop: "{{ containers | subelements('commands', skip_missing=True) }}"
+  loop_control:
+    loop_var: zt_pair
+    label: "{{ zt_pair[0].name }}"
