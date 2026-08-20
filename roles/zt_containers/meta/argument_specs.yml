@@ -104,8 +104,14 @@ argument_specs:
                 type: str
                 required: true
                 description: >-
-                  Hostname prefix; the actual Route host is
-                  "{{ host }}-{{ guid }}.{{ sandbox_openshift_apps_domain }}".
+                  Hostname prefix. The actual Route host is built by joining
+                  this value with the deployment guid and the sandbox's apps
+                  domain, in the form host-guid.apps_domain. Do not use
+                  Jinja-style double-curly-brace placeholders in this
+                  description: role argument_specs descriptions are templated
+                  as task args before validate_argument_spec runs, so such
+                  text would be evaluated for real and fail if the referenced
+                  name is not an actual in-scope variable.
               service:
                 type: str
                 required: true
