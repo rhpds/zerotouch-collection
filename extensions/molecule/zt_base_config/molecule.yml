@@ -1,0 +1,28 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ${MOLECULE_PROJECT_DIRECTORY}/tests/static/collections-requirements.yml
+driver:
+  name: default
+platforms:
+  - name: localhost
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      fact_caching: jsonfile
+      fact_caching_connection: ${MOLECULE_EPHEMERAL_DIRECTORY}/facts_cache
+      fact_caching_timeout: 300
+  inventory:
+    host_vars:
+      localhost:
+        ansible_connection: local
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - converge
+    - verify
+verifier:
+  name: ansible

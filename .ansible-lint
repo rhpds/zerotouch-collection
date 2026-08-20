@@ -1,0 +1,11 @@
+---
+profile: production
+
+exclude_paths:
+- tests/
+- testing/
+- extensions/molecule/
+
+skip_list:
+- var-naming[no-role-prefix]
+- galaxy[no-changelog]

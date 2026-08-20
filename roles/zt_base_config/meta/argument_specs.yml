@@ -1,0 +1,68 @@
+---
+argument_specs:
+  main:
+    short_description: >-
+      Load Zero Touch per-lab configuration (firewall rules, instances,
+      networks, containers) from a lab's content git repo.
+    description: >-
+      Reproduces the dynamic git-based config lookup that Zero Touch v1
+      inlines directly as catalog-item Jinja. Fetches
+      config/{firewall,instances,networks}.yaml from the raw
+      githubusercontent.com mirror of the given repo/ref and publishes the
+      parsed results as cacheable facts: zero_touch_egress_lockdown_rules,
+      zero_touch_ingress_lockdown_rules, containers, instances, networks.
+    options:
+      zt_base_config_content_git_repo:
+        type: str
+        required: true
+        description: >-
+          Git repo URL for the lab's content. Defaults to
+          ocp4_workload_showroom_content_git_repo so the same catalog
+          parameter drives both showroom content and Zero Touch config. Must
+          be an https://github.com/<org>/<repo>.git URL — other git hosts and
+          URLs without a .git suffix are rejected up front with a clear error.
+      zt_base_config_content_git_repo_ref:
+        type: str
+        default: main
+        description: Git ref (branch or tag) to read the config files from.
+      zt_base_config_firewall_file:
+        type: str
+        default: firewall.yaml
+        description: >-
+          Path (relative to the repo's config/ directory) to the file
+          declaring egress/ingress lockdown rules.
+      zt_base_config_instances_file:
+        type: str
+        default: instances.yaml
+        description: >-
+          Path (relative to the repo's config/ directory) to the file
+          declaring virtualmachines and containers.
+      zt_base_config_networks_file:
+        type: str
+        default: networks.yaml
+        description: >-
+          Path (relative to the repo's config/ directory) to the file
+          declaring networks.
+      zt_base_config_lookup_errors:
+        type: str
+        default: warn
+        choices:
+          - warn
+          - ignore
+          - strict
+        description: >-
+          Governs how a missing firewall.yaml is handled: warn logs a notice
+          and continues with no extra lockdown rules, ignore continues
+          silently, strict fails the role. Only applies to firewall.yaml —
+          instances.yaml and networks.yaml are always required and fail the
+          role if they can't be fetched.
+      zt_base_config_fetch_retries:
+        type: int
+        default: 5
+        description: >-
+          Retries for each config file fetch (firewall/instances/networks),
+          to tolerate transient network/API failures.
+      zt_base_config_fetch_delay:
+        type: int
+        default: 3
+        description: Delay in seconds between config file fetch retries.

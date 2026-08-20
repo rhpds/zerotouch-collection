@@ -1,0 +1,21 @@
+---
+- name: Converge
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    guid: molecule
+    sandbox_openshift_namespace: zt-lockdown-test
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"
+  tasks:
+    - name: Create the test namespace
+      kubernetes.core.k8s:
+        name: "{{ sandbox_openshift_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Run zt_security_lockdown
+      ansible.builtin.include_role:
+        name: rhpds.zerotouch.zt_security_lockdown

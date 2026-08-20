@@ -1,0 +1,66 @@
+---
+- name: Remove Routes created for containers
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    state: absent
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ zt_containers_namespace }}"
+    name: "{{ zt_pair[1].name }}"
+  register: r_zt_container_route_remove
+  retries: 10
+  delay: 5
+  until: r_zt_container_route_remove is not failed
+  failed_when: >-
+    r_zt_container_route_remove is failed and
+    'NotFound' not in (r_zt_container_route_remove.msg | default(''))
+  loop: "{{ containers | subelements('routes', skip_missing=True) }}"
+  loop_control:
+    loop_var: zt_pair
+    label: "{{ zt_pair[1].name }}"
+
+- name: Remove Services created for containers
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    state: absent
+    api_version: v1
+    kind: Service
+    namespace: "{{ zt_containers_namespace }}"
+    name: "{{ zt_pair[1].name }}"
+  register: r_zt_container_service_remove
+  retries: 10
+  delay: 5
+  until: r_zt_container_service_remove is not failed
+  failed_when: >-
+    r_zt_container_service_remove is failed and
+    'NotFound' not in (r_zt_container_service_remove.msg | default(''))
+  loop: "{{ containers | subelements('services', skip_missing=True) }}"
+  loop_control:
+    loop_var: zt_pair
+    label: "{{ zt_pair[1].name }}"
+
+- name: Remove Deployments created for containers
+  kubernetes.core.k8s:
+    host: "{{ zt_containers_openshift_api_url }}"
+    api_key: "{{ zt_containers_openshift_api_key }}"
+    validate_certs: "{{ zt_containers_validate_certs }}"
+    state: absent
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ zt_containers_namespace }}"
+    name: "{{ zt_container.name }}"
+  register: r_zt_container_deploy_remove
+  retries: 10
+  delay: 5
+  until: r_zt_container_deploy_remove is not failed
+  failed_when: >-
+    r_zt_container_deploy_remove is failed and
+    'NotFound' not in (r_zt_container_deploy_remove.msg | default(''))
+  loop: "{{ containers }}"
+  loop_control:
+    loop_var: zt_container
+    label: "{{ zt_container.name }}"

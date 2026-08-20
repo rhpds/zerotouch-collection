@@ -1,0 +1,48 @@
+---
+# Requires the `kind` CLI (https://kind.sigs.k8s.io/) on the machine running
+# molecule. NetworkPolicy and the other objects zt_security_lockdown creates
+# work against a vanilla kind cluster — no OpenShift-specific CRDs needed.
+- name: Create
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kind_cluster_name: zt-zerotouch-molecule-lockdown
+  tasks:
+    - name: Check whether docker is available
+      ansible.builtin.command: sh -c "command -v docker"
+      register: r_docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Set fact for docker availability
+      ansible.builtin.set_fact:
+        zt_docker_present: "{{ r_docker_check.rc == 0 }}"
+
+    - name: Check whether the kind cluster already exists
+      ansible.builtin.command: kind get clusters
+      register: r_kind_clusters
+      changed_when: false
+      failed_when: false
+      environment:
+        KIND_EXPERIMENTAL_PROVIDER: "{{ omit if zt_docker_present else 'podman' }}"
+
+    - name: Create the kind cluster
+      when: kind_cluster_name not in (r_kind_clusters.stdout_lines | default([]))
+      ansible.builtin.command: >-
+        kind create cluster --name {{ kind_cluster_name }} --wait 120s
+      environment:
+        KIND_EXPERIMENTAL_PROVIDER: "{{ omit if zt_docker_present else 'podman' }}"
+
+    - name: Fetch the kind cluster's kubeconfig
+      ansible.builtin.command: kind get kubeconfig --name {{ kind_cluster_name }}
+      register: r_kind_kubeconfig
+      changed_when: false
+      environment:
+        KIND_EXPERIMENTAL_PROVIDER: "{{ omit if zt_docker_present else 'podman' }}"
+
+    - name: Write kubeconfig to the scenario's ephemeral directory
+      ansible.builtin.copy:
+        content: "{{ r_kind_kubeconfig.stdout }}"
+        dest: "{{ molecule_ephemeral_directory }}/kubeconfig"
+        mode: "0600"

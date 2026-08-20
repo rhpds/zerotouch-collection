@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: localhost
+  gather_facts: true
+  vars:
+    guid: molecule
+    # rhpds/zt-ans-bu-eda-netbox is the one confirmed-real public repo using
+    # the containers: feature — see roles/zt_containers/README.md.
+    ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ans-bu-eda-netbox.git
+    ocp4_workload_showroom_content_git_repo_ref: main
+  tasks:
+    - name: Run zt_base_config against a real public fixture repo
+      ansible.builtin.include_role:
+        name: rhpds.zerotouch.zt_base_config

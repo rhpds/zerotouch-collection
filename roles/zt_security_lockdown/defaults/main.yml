@@ -1,0 +1,64 @@
+---
+zt_security_lockdown_namespace: "{{ sandbox_openshift_namespace | default('') }}"
+zt_security_lockdown_policy_name: "zt-lockdown-{{ guid }}"
+zt_security_lockdown_openshift_api_url: "{{ sandbox_openshift_api_url | default(omit) }}"
+zt_security_lockdown_openshift_api_key: "{{ sandbox_openshift_api_key | default(omit) }}"
+zt_security_lockdown_validate_certs: false
+
+# Ported verbatim from redhat-cop/agnosticd's
+# ansible/configs/zero-touch-base-rhel/default_vars_openshift_cnv.yaml
+zt_security_lockdown_default_ingress_rules:
+  - from:
+      - ipBlock:
+          cidr: "0.0.0.0/0"
+          except: []
+    ports:
+      - protocol: TCP
+        port: 80
+      - protocol: TCP
+        port: 443
+      - protocol: TCP
+        port: 8080
+      - protocol: TCP
+        port: 7171
+      - protocol: TCP
+        port: 8081
+      - protocol: TCP
+        port: 9000
+  - ports:
+      - protocol: TCP
+        port: 22
+    from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: showroom
+
+zt_security_lockdown_default_egress_rules:
+  - ports:
+      - protocol: UDP
+        port: 5353
+      - protocol: TCP
+        port: 5353
+    to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: openshift-dns
+  - ports:
+      - protocol: TCP
+        port: 22
+    to:
+      - podSelector:
+          matchLabels:
+            kubevirt.io: virt-launcher
+  - ports:
+      - protocol: TCP
+        port: 7171
+      - protocol: TCP
+        port: 8081
+      - protocol: TCP
+        port: 9000
+
+# Extra rules from the lab's dynamic firewall.yaml — see zt_base_config's
+# zero_touch_ingress_lockdown_rules / zero_touch_egress_lockdown_rules output.
+zero_touch_ingress_lockdown_rules: []
+zero_touch_egress_lockdown_rules: []

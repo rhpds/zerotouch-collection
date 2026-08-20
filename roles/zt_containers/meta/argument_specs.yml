@@ -1,0 +1,162 @@
+---
+argument_specs:
+  main:
+    short_description: >-
+      Provision the Zero Touch containers: sidecar list as one Deployment
+      per entry, with optional Service/Route exposure and one-time init
+      commands.
+    description: >-
+      New capability (not a port of any v1 role — see the migration
+      proposal's Risk #1: `containers:` support is unfinished in v1 too).
+      Reads the `containers` list (typically produced by zt_base_config from
+      a lab's instances.yaml) and, for ACTION in [provision, create], creates
+      one apps/v1 Deployment per entry plus any declared v1/Service and
+      route.openshift.io/v1/Route objects. For ACTION in [destroy, remove],
+      deletes the same objects. Schema and field names for a containers[]
+      entry match Kubernetes' own PodSpec fields directly (ports,
+      volumeMounts, volumes) so no translation layer is needed, based on the
+      one confirmed-real example:
+      https://github.com/rhpds/zt-ans-bu-eda-netbox/blob/main/config/instances.yaml.
+      Note: sandbox_openshift_apps_domain (not an option of this role — it's
+      expected to already be set by the sandbox/CNV setup) is required
+      whenever any containers[].routes entry is declared, since it's used to
+      build each Route's host.
+    options:
+      containers:
+        type: list
+        elements: dict
+        default: []
+        description: List of sidecar containers to provision.
+        options:
+          name:
+            type: str
+            required: true
+            description: Container/Deployment/Pod-label name.
+          image:
+            type: str
+            required: true
+            description: Container image reference.
+          ports:
+            type: list
+            elements: dict
+            description: >-
+              Kubernetes container ports (name/containerPort/protocol),
+              passed through unchanged to the Pod spec.
+          environment:
+            type: dict
+            description: >-
+              Environment variables as a flat key/value dict, converted to
+              the Kubernetes env: list internally.
+          volumeMounts:
+            type: list
+            elements: dict
+            description: Kubernetes volumeMounts entries, passed through unchanged.
+          volumes:
+            type: list
+            elements: dict
+            description: Kubernetes pod volumes entries, passed through unchanged.
+          commands:
+            type: list
+            elements: str
+            description: >-
+              Shell commands to exec once inside the running container after
+              it becomes Ready (e.g. one-time database/user seeding).
+          memory:
+            type: str
+            default: 256Mi
+            description: Memory request and limit for the container.
+          cpu:
+            type: str
+            description: >-
+              CPU request (100m default) and limit (500m default) for the
+              container.
+          services:
+            type: list
+            elements: dict
+            description: >-
+              Services to create in front of this container, using the same
+              shape as VM instances[].services (name/ports).
+            options:
+              name:
+                type: str
+                required: true
+                description: Name of the Service object.
+              ports:
+                type: list
+                elements: dict
+                required: true
+                description: >-
+                  Kubernetes Service ports (name/port/targetPort/protocol),
+                  passed through unchanged to the Service spec.
+          routes:
+            type: list
+            elements: dict
+            description: >-
+              OpenShift Routes to create for this container's Services,
+              using the same shape as VM instances[].routes
+              (name/host/service/targetPort/tls/tls_termination).
+            options:
+              name:
+                type: str
+                required: true
+                description: Name of the Route object.
+              host:
+                type: str
+                required: true
+                description: >-
+                  Hostname prefix; the actual Route host is
+                  "{{ host }}-{{ guid }}.{{ sandbox_openshift_apps_domain }}".
+              service:
+                type: str
+                required: true
+                description: Name of the Service this Route sends traffic to.
+              targetPort:
+                type: str
+                required: true
+                description: Target port on the Service to route traffic to.
+              tls:
+                type: bool
+                default: false
+                description: Whether to enable TLS termination on the Route.
+              tls_termination:
+                type: str
+                default: edge
+                description: >-
+                  TLS termination type (edge/passthrough/reencrypt), only
+                  used when tls is true.
+      zt_containers_namespace:
+        type: str
+        required: true
+        description: >-
+          Namespace to create/remove containers in. Defaults to
+          sandbox_openshift_namespace (the same namespace the CNV VMs
+          already live in).
+      zt_containers_openshift_api_url:
+        type: str
+        description: OpenShift API URL. Defaults to sandbox_openshift_api_url.
+      zt_containers_openshift_api_key:
+        type: str
+        no_log: true
+        description: OpenShift API token. Defaults to sandbox_openshift_api_key.
+      zt_containers_validate_certs:
+        type: bool
+        default: false
+        description: >-
+          Whether to validate TLS certs on OpenShift API calls. Defaults to
+          false for self-signed sandbox cluster CAs.
+      zt_containers_wait_ready:
+        type: bool
+        default: true
+        description: Wait for each Deployment to reach Available before continuing.
+      zt_containers_wait_timeout:
+        type: int
+        default: 300
+        description: Seconds to wait for each Deployment to become Available.
+      zt_containers_command_retries:
+        type: int
+        default: 10
+        description: Retries for each one-time init command exec.
+      zt_containers_command_delay:
+        type: int
+        default: 5
+        description: Delay in seconds between init command exec retries.

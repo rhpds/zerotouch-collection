@@ -1,0 +1,59 @@
+---
+- name: Converge
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    guid: molecule
+    ACTION: provision
+    sandbox_openshift_namespace: zt-containers-test
+    sandbox_openshift_apps_domain: apps.molecule.test
+    # NOTE: this fixture deliberately does NOT set `commands:`. The
+    # kubernetes.core.k8s_exec-based init-commands code path
+    # (tasks/workload.yml's last two tasks) could not be exercised in this
+    # development sandbox — `kind` running on nested/rootless Podman here
+    # reliably fails OCI exec into pod containers ("OCI runtime exec failed")
+    # even though Deployment/Service/Route creation via the k8s API all work
+    # fine. This looks like a limitation of exec specifically through several
+    # layers of container nesting, not a bug in the role: `kubectl exec`
+    # against the same pod fails identically outside of Ansible entirely.
+    # Real CI (GitHub Actions has native Docker, no nesting) or a real
+    # OCP/CNV cluster (Phase 2/3) should be able to exercise this path — see
+    # roles/zt_containers/README.md's "Known limitation".
+    containers:
+      - name: demo
+        image: docker.io/library/nginx:1.27-alpine
+        ports:
+          - name: http
+            containerPort: 80
+            protocol: TCP
+        environment:
+          DEMO_MODE: molecule
+        memory: 128Mi
+        services:
+          - name: demo
+            ports:
+              - port: 80
+                protocol: TCP
+                targetPort: 80
+                name: http
+        routes:
+          - name: demo
+            host: demo
+            service: demo
+            targetPort: 80
+            tls: true
+            tls_termination: edge
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"
+  tasks:
+    - name: Create the test namespace
+      kubernetes.core.k8s:
+        name: "{{ sandbox_openshift_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Run zt_containers
+      ansible.builtin.include_role:
+        name: rhpds.zerotouch.zt_containers

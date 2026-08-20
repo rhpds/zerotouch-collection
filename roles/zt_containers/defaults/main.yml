@@ -1,0 +1,11 @@
+---
+containers: []
+
+zt_containers_namespace: "{{ sandbox_openshift_namespace | default('') }}"
+zt_containers_openshift_api_url: "{{ sandbox_openshift_api_url | default(omit) }}"
+zt_containers_openshift_api_key: "{{ sandbox_openshift_api_key | default(omit) }}"
+zt_containers_validate_certs: false
+zt_containers_wait_ready: true
+zt_containers_wait_timeout: 300
+zt_containers_command_retries: 10
+zt_containers_command_delay: 5

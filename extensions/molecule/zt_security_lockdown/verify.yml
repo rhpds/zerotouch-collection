@@ -1,0 +1,26 @@
+---
+- name: Verify
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sandbox_openshift_namespace: zt-lockdown-test
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"
+  tasks:
+    - name: Look up the NetworkPolicy that should have been created
+      kubernetes.core.k8s_info:
+        api_version: networking.k8s.io/v1
+        kind: NetworkPolicy
+        namespace: "{{ sandbox_openshift_namespace }}"
+        name: "zt-lockdown-molecule"
+      register: r_netpol
+
+    - name: Assert the NetworkPolicy exists with the expected default rule counts
+      ansible.builtin.assert:
+        that:
+          - r_netpol.resources | length == 1
+          - r_netpol.resources[0].spec.podSelector == {}
+          - r_netpol.resources[0].spec.ingress | length == 2
+          - r_netpol.resources[0].spec.egress | length == 3
+        fail_msg: "zt_security_lockdown did not create the expected NetworkPolicy: {{ r_netpol.resources }}"

@@ -1,0 +1,101 @@
+---
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - zt_base_config_content_git_repo | default('') | length > 0
+      - guid | default('') | length > 0
+    fail_msg: >-
+      zt_base_config requires zt_base_config_content_git_repo (or
+      ocp4_workload_showroom_content_git_repo) and guid to be set.
+    quiet: true
+
+- name: Assert content repo URL matches the expected GitHub .git shape
+  ansible.builtin.assert:
+    that:
+      - zt_base_config_content_git_repo is match('^https://github\.com/.+\.git$')
+    fail_msg: >-
+      zt_base_config_content_git_repo ({{ zt_base_config_content_git_repo }})
+      must be an https://github.com/<org>/<repo>.git URL; other hosts or a
+      missing .git suffix are not supported.
+    quiet: true
+
+- name: Compute the raw githubusercontent config directory URL
+  ansible.builtin.set_fact:
+    zt_base_config_git_config_directory: >-
+      {{ zt_base_config_content_git_repo
+        | replace('.git', '/' + zt_base_config_content_git_repo_ref + '/config/')
+        | replace('github.com', 'raw.githubusercontent.com') }}
+    cacheable: true
+
+- name: Fetch firewall.yaml from the content repo
+  ansible.builtin.uri:
+    url: "{{ zt_base_config_git_config_directory + zt_base_config_firewall_file }}"
+    return_content: true
+    status_code: "{{ [200] if zt_base_config_lookup_errors == 'strict' else [200, 404] }}"
+  register: r_zt_base_config_firewall
+  retries: "{{ zt_base_config_fetch_retries }}"
+  delay: "{{ zt_base_config_fetch_delay }}"
+  until: r_zt_base_config_firewall is not failed
+
+- name: Warn that firewall.yaml was not found
+  ansible.builtin.debug:
+    msg: >-
+      firewall.yaml not found at
+      {{ zt_base_config_git_config_directory }}{{ zt_base_config_firewall_file }};
+      continuing with no extra lockdown rules from this file.
+  when:
+    - r_zt_base_config_firewall.status == 404
+    - zt_base_config_lookup_errors == 'warn'
+
+- name: Parse firewall.yaml (tolerate a missing file)
+  ansible.builtin.set_fact:
+    _zt_base_config_firewall: >-
+      {{ (r_zt_base_config_firewall.content | from_yaml)
+        if r_zt_base_config_firewall.status == 200 else {} }}
+
+- name: Fetch instances.yaml from the content repo
+  ansible.builtin.uri:
+    url: "{{ zt_base_config_git_config_directory + zt_base_config_instances_file }}"
+    return_content: true
+    status_code: [200]
+  register: r_zt_base_config_instances
+  retries: "{{ zt_base_config_fetch_retries }}"
+  delay: "{{ zt_base_config_fetch_delay }}"
+  until: r_zt_base_config_instances is not failed
+
+- name: Parse instances.yaml
+  ansible.builtin.set_fact:
+    _zt_base_config_instances_file_content: >-
+      {{ (r_zt_base_config_instances.content | replace('INSTANCEGUID', guid)) | from_yaml }}
+
+- name: Fetch networks.yaml from the content repo
+  ansible.builtin.uri:
+    url: "{{ zt_base_config_git_config_directory + zt_base_config_networks_file }}"
+    return_content: true
+    status_code: [200]
+  register: r_zt_base_config_networks
+  retries: "{{ zt_base_config_fetch_retries }}"
+  delay: "{{ zt_base_config_fetch_delay }}"
+  until: r_zt_base_config_networks is not failed
+
+- name: Parse networks.yaml
+  ansible.builtin.set_fact:
+    _zt_base_config_networks_file_content: "{{ r_zt_base_config_networks.content | from_yaml }}"
+
+- name: Publish computed Zero Touch config as cacheable facts
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+    cacheable: true
+  loop:
+    - key: zero_touch_egress_lockdown_rules
+      value: "{{ _zt_base_config_firewall.egress | default([], true) }}"
+    - key: zero_touch_ingress_lockdown_rules
+      value: "{{ _zt_base_config_firewall.ingress | default([], true) }}"
+    - key: containers
+      value: "{{ _zt_base_config_instances_file_content.containers | default([], true) }}"
+    - key: instances
+      value: "{{ _zt_base_config_instances_file_content.virtualmachines | default([], true) }}"
+    - key: networks
+      value: "{{ _zt_base_config_networks_file_content | default([], true) }}"
+  loop_control:
+    label: "{{ item.key }}"
