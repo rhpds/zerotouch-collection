@@ -44,19 +44,23 @@ Building new roles for these would just be duplicate maintenance:
   directly, pointed at the existing `zerotouch` Helm chart and the sandbox's
   existing namespace.
 
-## Open design question: `zt_base_config` wiring
+## Catalog wiring: `zt_base_config` in `pre_infra_workloads`
 
-The migration proposal's own sample catalog item keeps the git-based config
-lookups as inline catalog Jinja (identical to Zero Touch v1) rather than
-invoking `zt_base_config` as a role, while its Roles Breakdown table
-separately lists `zt_base_config` as a `pre_infra_workloads` role. This
-collection builds `zt_base_config` as a role — usable either via
-`include_role` or as a reference implementation to copy back into inline
-catalog Jinja — and defers the actual choice to Phase 2, since it depends on
-how AgnosticD v2's runner persists facts across step boundaries (unconfirmed
-without a live test). See
-[`roles/zt_base_config/README.md`](roles/zt_base_config/README.md) for the
-full explanation.
+Production path: invoke `rhpds.zerotouch.zt_base_config` as the **first**
+`pre_infra_workloads.localhost` entry so its facts (`instances`, `networks`,
+`containers`, lockdown rules) exist before `zt_containers` and before
+`cloud-vms-base` creates VMs. This works via plain `set_fact` — pre-infra
+and infrastructure deployment are statically imported into one
+`ansible-playbook` process by `ansible/main.yml`, not run as separate
+ansible-runner invocations, so no fact-cache backend is required for the
+real deploy path (see the role's own README for where `cacheable: true`
+actually matters — its Molecule test, not this one). Catalog items must
+**omit** those keys (do not set empty lists) so extra-vars do not shadow
+the role. To override a git file, set a real list in the catalog —
+extra-vars always win. To skip git config entirely, omit the role and
+declare everything yourself.
+
+See [`roles/zt_base_config/README.md`](roles/zt_base_config/README.md).
 
 ## Requirements
 
@@ -87,9 +91,9 @@ Per the migration proposal, this collection only covers **Phase 1**. Phases
 2-5 all require a live OCP/CNV test cluster to validate properly and are
 tracked separately:
 
-- **Phase 2:** confirm `cloud-vms-base` + `openshift_cnv` actually wires
-  these roles in the way this collection assumes (particularly the
-  `zt_base_config` open question above).
+- **Phase 2:** confirm `cloud-vms-base` + `openshift_cnv` provisions from the
+  facts `zt_base_config` publishes (see catalog wiring above). The test
+  catalog `rhpds/agnosticv` `tests/zt-agd-v2-demo` is the live fixture.
 - **Phase 3:** validate `agnosticd.showroom.ocp4_workload_showroom` against
   `cloud-vms-base` + `openshift_cnv` (no existing precedent for this
   combination).

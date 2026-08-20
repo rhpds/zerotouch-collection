@@ -1,10 +1,13 @@
 ---
 # Runs as a separate ansible-playbook process from converge.yml. Relies on
 # provisioner.config_options.defaults.fact_caching (jsonfile) in molecule.yml
-# so the cacheable facts zt_base_config publishes actually persist here —
-# this is the same mechanism the role relies on for AgnosticD v2 (see
-# roles/zt_base_config/README.md's "Open question — deferred to Phase 2").
-# A failure here would be a real, useful signal about that mechanism.
+# so the cacheable facts zt_base_config publishes actually persist here.
+# This cross-process fact-cache dependency is specific to this Molecule
+# scenario (converge/verify are two separate ansible-playbook runs) — the
+# real cloud-vms-base deploy doesn't need it, since pre_infra and
+# infrastructure_deployment run in one ansible-playbook process there (see
+# roles/zt_base_config/README.md "Catalog wiring"). A failure here would
+# still be a real signal that this role's cacheable facts are broken.
 - name: Verify
   hosts: localhost
   gather_facts: true
