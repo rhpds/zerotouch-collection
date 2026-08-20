@@ -42,27 +42,38 @@ of the migration proposal.
   `zt_base_config_fetch_retries` / `zt_base_config_fetch_delay` (default `5`
   retries, `3`s delay).
 
-## Open question — deferred to Phase 2
+## Catalog wiring
 
-The migration proposal's own sample AgnosticV catalog item keeps these
-lookups as **inline catalog Jinja** (identical to v1), and never actually
-invokes this role. Its Roles Breakdown table, on the other hand, separately
-lists `zt_base_config` as a role meant to run in `pre_infra_workloads`.
+Invoke this role as the **first** `pre_infra_workloads.localhost` entry.
+AgnosticD v2's `ansible/main.yml` statically imports (`import_playbook`,
+not a separate ansible-runner invocation) `configs/{{ config }}/pre_infra.yml`
+and then the cloud provider's `infrastructure_deployment.yml` into one
+`ansible-playbook` process. Because both plays target `localhost` within
+that single process, a plain `set_fact` is already visible to VM/network
+creation — no fact caching is required on this path.
 
-This role is written so either path works:
+`cacheable: true` is used anyway, defensively, and because it is genuinely
+required for this role's own Molecule scenario: `converge.yml` and
+`verify.yml` run as two separate `ansible-playbook` processes, so
+`molecule.yml`'s jsonfile `fact_caching` is what lets `verify.yml` see the
+facts `converge.yml` published. Don't read that test setup as evidence that
+`cacheable: true` is what makes the real `cloud-vms-base` deploy work — it
+isn't; `import_playbook` is.
 
-- **As inline Jinja** (proven, zero risk): copy the lookup expressions out of
-  `tasks/main.yml` directly into the catalog item's top-level variables, the
-  same way v1 does it.
-- **As a role** (cleaner, single-sourced, needs validation): include
-  `rhpds.zerotouch.zt_base_config` from `pre_infra_workloads.localhost`. This
-  role publishes its outputs via `set_fact ... cacheable: true` specifically
-  so they have the best chance of surviving into later deployment steps
-  (instance/network creation) if those steps run as separate `ansible-runner`
-  invocations sharing a fact cache backend. **Whether AgnosticD v2's runner
-  architecture actually requires — or even supports — cacheable facts across
-  step boundaries is unconfirmed and is explicitly a Phase 2 validation item,
-  not resolved by this role.**
+Catalog items must **omit** `instances`, `networks`, `containers`, and the
+`zero_touch_*_lockdown_rules` keys. Extra-vars always beat `set_fact`, so
+an empty placeholder (`instances: []`) would provision zero VMs. To
+override a git file, set a real list in the catalog. To skip git config
+entirely, omit this role from workloads and declare everything yourself.
+
+Do not skip the fetch just because `instances is defined`:
+`cloud-vms-base`'s CNV `default_vars` already define a generic `bastion`
+via `include_vars`. Naive skip-if-defined would keep that default and never
+load the lab.
+
+The v1 inline `lookup('ansible.builtin.url', ...)` copies in each BU's
+`common.yaml` are the thing this role replaces, not a supported alternate
+path.
 
 ## Variables
 
@@ -75,4 +86,5 @@ See [`meta/argument_specs.yml`](meta/argument_specs.yml) for the full list of
 pre_infra_workloads:
   localhost:
     - rhpds.zerotouch.zt_base_config
+    - rhpds.zerotouch.zt_containers
 ```
