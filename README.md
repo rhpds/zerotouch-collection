@@ -40,9 +40,16 @@ Building new roles for these would just be duplicate maintenance:
   `ocp4_workload_litellm_bastion_profile`).
 - **Showroom deployment** (v1: `ocp4_workload_showroom` role bundled in
   `redhat-cop/agnosticd`) → use
-  [`agnosticd.showroom.ocp4_workload_showroom`](https://github.com/rhpds/showroom)
+  [`agnosticd.showroom.zerotouch_showroom`](https://github.com/rhpds/showroom/blob/main/roles/zerotouch_showroom/README.adoc)
   directly, pointed at the existing `zerotouch` Helm chart and the sandbox's
-  existing namespace.
+  existing namespace. Phase 3 originally planned to reuse the generic
+  `agnosticd.showroom.ocp4_workload_showroom` role for this, but that role
+  assumes it owns the namespace it creates — CNV sandboxes hand it a shared,
+  pre-existing namespace the automation SA can't manage that way. The
+  documented fallback (see Key Decision #4 in the migration proposal) was a
+  new sibling role, `zerotouch_showroom`, ported from v1 and added directly
+  to `rhpds/showroom`. Wherever else this document or a role README says
+  "showroom", read that as `zerotouch_showroom`, not `ocp4_workload_showroom`.
 
 ## Catalog wiring: `zt_base_config` in `pre_infra_workloads`
 
@@ -88,15 +95,17 @@ Run `molecule` commands from the collection root (where `galaxy.yml` lives)
 ## What's out of scope for this collection (deferred to a follow-up plan)
 
 Per the migration proposal, this collection only covers **Phase 1**. Phases
-2-5 all require a live OCP/CNV test cluster to validate properly and are
-tracked separately:
+2, 4, and 5 all require a live OCP/CNV test cluster to validate properly and
+are tracked separately:
 
 - **Phase 2:** confirm `cloud-vms-base` + `openshift_cnv` provisions from the
   facts `zt_base_config` publishes (see catalog wiring above). The test
   catalog `rhpds/agnosticv` `tests/zt-agd-v2-demo` is the live fixture.
-- **Phase 3:** validate `agnosticd.showroom.ocp4_workload_showroom` against
-  `cloud-vms-base` + `openshift_cnv` (no existing precedent for this
-  combination).
+- **Phase 3 — done:** validated against `cloud-vms-base` + `openshift_cnv` in
+  the `zt-agd-v2-demo` test catalog. The outcome was the new
+  `agnosticd.showroom.zerotouch_showroom` role, not
+  `agnosticd.showroom.ocp4_workload_showroom` as originally planned — see
+  "What's deliberately NOT in this collection" above.
 - **Phase 4:** write the new `zt-rhelbu/zt-rhel-bu-lab-developer-cnv-v2`
   AgnosticV base component that actually wires this collection's roles
   together with `cloud_vm_workloads`, `showroom`, and `rhpds.litellm_virtual_keys`.
