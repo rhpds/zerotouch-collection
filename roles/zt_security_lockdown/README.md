@@ -48,6 +48,6 @@ See [`meta/argument_specs.yml`](meta/argument_specs.yml) for the full list of
 ```yaml
 post_software_final_workloads:
   localhost:
-    - agnosticd.showroom.ocp4_workload_showroom
+    - agnosticd.showroom.zerotouch_showroom
     - rhpds.zerotouch.zt_security_lockdown
 ```
