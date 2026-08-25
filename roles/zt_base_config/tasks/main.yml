@@ -68,6 +68,65 @@
     _zt_base_config_instances_file_content: >-
       {{ (r_zt_base_config_instances.content | replace('INSTANCEGUID', guid)) | from_yaml }}
 
+# Some BUs' content repos (confirmed: every real Ansible BU lab checked so far -
+# zt-ans-bu-dev-tools, zt-ans-bu-eda-netbox, zt-ans-bu-windows-ad,
+# zt-ans-bu-windows90) tag their access VM `AnsibleGroup: isolated` only, never
+# `bastions`. cloud-vms-base/openshift_cnv treats `isolated` as a reserved
+# exclusion group (same tier as windows/network - see workloads.yml and
+# infrastructure_deployment.yml's `all:!windows:!network:!isolated` host
+# patterns), so that VM would otherwise get no SSH/wait-for-connection and no
+# control_user/asset_injector at all. Ansible's own add_host action plugin
+# splits a comma-joined AnsibleGroup string into multiple inventory groups
+# (confirmed against ansible-core source), which is exactly how
+# cloud-vms-base's own default bastion already tags itself "bastions,showroom"
+# - so prepending "bastions," here lands the host in both groups without
+# dropping its original tag.
+- name: Collect this lab's parsed VM list for the bastion-group fixup
+  ansible.builtin.set_fact:
+    _zt_base_config_vms: "{{ _zt_base_config_instances_file_content.virtualmachines | default([], true) }}"
+
+- name: Determine whether any parsed VM already carries "bastions" in its AnsibleGroup tag
+  ansible.builtin.set_fact:
+    _zt_base_config_has_bastion_tag: >-
+      {{ (_zt_base_config_vms
+        | map(attribute='tags', default=[])
+        | flatten
+        | selectattr('key', 'equalto', 'AnsibleGroup')
+        | map(attribute='value')
+        | select('search', 'bastions')
+        | list
+        | length) > 0 }}
+
+- name: Ensure at least one VM's AnsibleGroup tag includes "bastions"
+  when:
+    - zt_base_config_ensure_bastion_group | default(true) | bool
+    - _zt_base_config_vms | length > 0
+    - not _zt_base_config_has_bastion_tag
+  block:
+    - name: Split the first VM's existing AnsibleGroup tag value from its other tags
+      ansible.builtin.set_fact:
+        _zt_base_config_first_vm_other_tags: >-
+          {{ (_zt_base_config_vms[0].tags | default([]))
+            | rejectattr('key', 'equalto', 'AnsibleGroup')
+            | list }}
+        _zt_base_config_first_vm_group: >-
+          {{ ((_zt_base_config_vms[0].tags | default([]))
+            | selectattr('key', 'equalto', 'AnsibleGroup')
+            | map(attribute='value')
+            | list | first) | default('') }}
+
+    - name: Patch the first VM's AnsibleGroup tag to prepend "bastions,"
+      ansible.builtin.set_fact:
+        _zt_base_config_instances_file_content: >-
+          {{ _zt_base_config_instances_file_content
+            | combine({'virtualmachines':
+              ([_zt_base_config_vms[0]
+                | combine({'tags': _zt_base_config_first_vm_other_tags +
+                  [{'key': 'AnsibleGroup',
+                    'value': ('bastions,' + _zt_base_config_first_vm_group)
+                      if _zt_base_config_first_vm_group else 'bastions'}]})]
+                + _zt_base_config_vms[1:]) }) }}
+
 - name: Fetch networks.yaml from the content repo
   ansible.builtin.uri:
     url: "{{ zt_base_config_git_config_directory + zt_base_config_networks_file }}"

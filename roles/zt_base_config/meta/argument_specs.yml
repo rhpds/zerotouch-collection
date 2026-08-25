@@ -66,3 +66,18 @@ argument_specs:
         type: int
         default: 3
         description: Delay in seconds between config file fetch retries.
+      zt_base_config_ensure_bastion_group:
+        type: bool
+        default: true
+        description: >-
+          When true (default), and no parsed VM already carries "bastions" in
+          its AnsibleGroup tag, rewrite the first VM's AnsibleGroup tag to
+          prepend "bastions," (e.g. isolated becomes bastions,isolated) so it
+          isn't silently excluded from cloud-vms-base's generic Linux host
+          pipeline. Some BUs' content repos tag their access VM
+          AnsibleGroup: isolated only, which cloud-vms-base/openshift_cnv
+          treats as a reserved exclusion group (same tier as windows/network)
+          - without this, that VM gets no SSH/wait-for-connection and no
+          control_user/asset_injector at all. Set to false to disable this
+          rewrite if a lab's content repo already tags its own bastion
+          correctly, or if you want isolated-only VMs to stay fully excluded.

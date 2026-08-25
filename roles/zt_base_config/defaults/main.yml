@@ -7,3 +7,4 @@ zt_base_config_networks_file: networks.yaml
 zt_base_config_lookup_errors: warn
 zt_base_config_fetch_retries: 5
 zt_base_config_fetch_delay: 3
+zt_base_config_ensure_bastion_group: true
