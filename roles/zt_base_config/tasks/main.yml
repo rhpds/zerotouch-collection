@@ -75,12 +75,25 @@
 # exclusion group (same tier as windows/network - see workloads.yml and
 # infrastructure_deployment.yml's `all:!windows:!network:!isolated` host
 # patterns), so that VM would otherwise get no SSH/wait-for-connection and no
-# control_user/asset_injector at all. Ansible's own add_host action plugin
-# splits a comma-joined AnsibleGroup string into multiple inventory groups
-# (confirmed against ansible-core source), which is exactly how
-# cloud-vms-base's own default bastion already tags itself "bastions,showroom"
-# - so prepending "bastions," here lands the host in both groups without
-# dropping its original tag.
+# control_user/asset_injector at all.
+#
+# Live-tested against a real ocpvdev01 order (GPTEINFRA-17763, guid hcshc):
+# an earlier version of this fixup only *prepended* "bastions," while keeping
+# "isolated" (mirroring cloud-vms-base's own "bastions,showroom" bastion
+# convention). That got the VM correctly targeted by `bastions:`-scoped
+# workload plays (pre_software_workloads.bastions ran control_user/
+# asset_injector successfully), but SSH itself still failed with
+# "Could not resolve hostname vscode" - because "Step 001.3 Configure Linux
+# hosts and wait for connection" (`hosts: all:!windows:!network:!isolated`)
+# is what actually sets `ansible_ssh_extra_args: -F <generated ssh_config>`,
+# and it's excluded ANY host still tagged isolated, even if also tagged
+# bastions. Without that fact set, Ansible fell back to a raw `ssh vscode`
+# with no `-F` flag, and the bare hostname doesn't resolve outside the
+# generated per-guid ssh_config's Host alias. Fixed by dropping "isolated"
+# from the tag entirely (not just adding "bastions" alongside it) - see
+# below. ansible.builtin.add_host's comma-splitting `groups:` behavior
+# (confirmed against ansible-core source) is what makes plain "bastions"
+# alone still work for every other purpose.
 - name: Collect this lab's parsed VM list for the bastion-group fixup
   ansible.builtin.set_fact:
     _zt_base_config_vms: "{{ _zt_base_config_instances_file_content.virtualmachines | default([], true) }}"
@@ -109,13 +122,21 @@
           {{ (_zt_base_config_vms[0].tags | default([]))
             | rejectattr('key', 'equalto', 'AnsibleGroup')
             | list }}
-        _zt_base_config_first_vm_group: >-
-          {{ ((_zt_base_config_vms[0].tags | default([]))
+        # Split on comma and drop "isolated" specifically (not "windows"/
+        # "network" - a VM genuinely tagged one of those is presumably not
+        # meant to be treated as a generic Linux bastion at all, so this
+        # fixup shouldn't force it into that role). Any other coexisting
+        # token is preserved.
+        _zt_base_config_first_vm_group_tokens: >-
+          {{ (((_zt_base_config_vms[0].tags | default([]))
             | selectattr('key', 'equalto', 'AnsibleGroup')
             | map(attribute='value')
-            | list | first) | default('') }}
+            | list | first) | default('')).split(',')
+            | reject('equalto', '')
+            | reject('equalto', 'isolated')
+            | list }}
 
-    - name: Patch the first VM's AnsibleGroup tag to prepend "bastions,"
+    - name: Patch the first VM's AnsibleGroup tag to be "bastions" (dropping "isolated" specifically)
       ansible.builtin.set_fact:
         _zt_base_config_instances_file_content: >-
           {{ _zt_base_config_instances_file_content
@@ -123,8 +144,7 @@
               ([_zt_base_config_vms[0]
                 | combine({'tags': _zt_base_config_first_vm_other_tags +
                   [{'key': 'AnsibleGroup',
-                    'value': ('bastions,' + _zt_base_config_first_vm_group)
-                      if _zt_base_config_first_vm_group else 'bastions'}]})]
+                    'value': (['bastions'] + _zt_base_config_first_vm_group_tokens) | join(',')}]})]
                 + _zt_base_config_vms[1:]) }) }}
 
 - name: Fetch networks.yaml from the content repo
