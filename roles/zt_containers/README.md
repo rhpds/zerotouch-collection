@@ -82,18 +82,26 @@ reference.
   `kind` cluster with the Route CRD installed for structural validation only —
   see `extensions/molecule/zt_containers`). Full Route reconciliation is a
   Phase 2/3 validation item, not covered by this collection's automated tests.
-- The `commands:` (one-time init exec) code path is implemented and
-  lint-clean, but **could not be live-tested** in the sandbox this collection
-  was developed in: `kind` running on nested/rootless Podman there reliably
-  fails `kubernetes.core.k8s_exec` calls into pod containers with
-  `OCI runtime exec failed`, even though Deployment/Service/Route creation via
-  the Kubernetes API all work fine in the same environment (confirmed `kubectl
-  exec` against the same pod fails identically, outside of Ansible entirely —
-  this points at the container-nesting depth, not the role). Real CI (e.g.
-  GitHub Actions, which has native Docker with no nesting) or a real OCP/CNV
-  cluster should not hit this. Treat `commands:` as needing a real
-  live-cluster smoke test in Phase 2/3 before depending on it in production —
-  see `extensions/molecule/zt_containers/converge.yml`'s fixture comment.
+- **Live-tested and fixed** (GPTEINFRA-17763 Phase 5 validation, against a
+  real `ocpvdev01` order of `zt-ans-bu-dev-tools`' `gitea` sidecar): the
+  `commands:` exec step originally passed `command` as a 3-element YAML list
+  (`["/bin/sh", "-c", "{{ zt_pair[1] }}"]`), but
+  `kubernetes.core.k8s_exec`'s `command` option is documented and enforced as
+  `type: str`, not a list — Ansible's own type coercion stringified the list
+  into its Python `repr()` before the module ever saw it, and the module's
+  own internal `shlex.split()` call then failed with `No closing quotation`
+  on any command containing quotes (e.g. `curl -d '{"key": "value"}'`, exactly
+  what `zt-ans-bu-dev-tools`'s `gitea` `commands:` use). Fixed by passing a
+  single string built with Ansible's `quote` filter
+  (`command: "/bin/sh -c {{ zt_pair[1] | quote }}"`), which round-trips
+  correctly through the module's own `shlex.split()`.
+- `kind` running on nested/rootless Podman independently fails
+  `kubernetes.core.k8s_exec` calls into pod containers with
+  `OCI runtime exec failed` (confirmed `kubectl exec` against the same pod
+  fails identically, outside of Ansible entirely — this points at the
+  container-nesting depth, not the role), so this Molecule scenario's
+  `commands:` step still can't be exercised end-to-end in CI even after the
+  fix above — only the real live-cluster order caught and confirmed it.
 
 ## Example
 
