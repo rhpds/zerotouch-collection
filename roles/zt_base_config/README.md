@@ -15,7 +15,10 @@ mirror of that repo, parses them, and publishes the results as facts:
 - `containers` (from `instances.yaml`'s `containers` key — consumed by
   [`zt_containers`](../zt_containers/README.md))
 - `instances` (from `instances.yaml`'s `virtualmachines` key, with the
-  `INSTANCEGUID` placeholder replaced by the real `guid`)
+  `INSTANCEGUID` placeholder replaced by the real `guid`, and — unless no VM
+  needs it or `zt_base_config_ensure_bastion_group` is `false` — the first VM's
+  `AnsibleGroup` tag patched to include `bastions`; see "Bastion group
+  fixup" below)
 - `networks` (the full parsed contents of `networks.yaml`)
 
 This reproduces the Jinja lookups that Zero Touch v1 duplicates as inline
@@ -41,6 +44,62 @@ of the migration proposal.
 - All three fetches retry transient failures using
   `zt_base_config_fetch_retries` / `zt_base_config_fetch_delay` (default `5`
   retries, `3`s delay).
+
+## Bastion group fixup
+
+Some BUs' content repos tag their access VM `AnsibleGroup: isolated` only,
+never `bastions` — confirmed against every real Ansible BU lab checked so far
+([`zt-ans-bu-dev-tools`](https://github.com/rhpds/zt-ans-bu-dev-tools/blob/main/config/instances.yaml),
+[`zt-ans-bu-eda-netbox`](https://github.com/rhpds/zt-ans-bu-eda-netbox/blob/main/config/instances.yaml),
+[`zt-ans-bu-windows-ad`](https://github.com/rhpds/zt-ans-bu-windows-ad/blob/main/config/instances.yaml),
+[`zt-ans-bu-windows90`](https://github.com/rhpds/zt-ans-bu-windows90/blob/main/config/instances.yaml)).
+`cloud-vms-base`/`cloud_provider_openshift_cnv` treat `isolated` as a
+**reserved exclusion group**, same tier as `windows`/`network`
+(`hosts: all:!windows:!network:!isolated` in both `workloads.yml` and
+`infrastructure_deployment.yml`) — a VM tagged only `isolated` gets no
+SSH/wait-for-connection and no `control_user`/`asset_injector` at all.
+
+To bridge this without touching shared `agnosticd-v2` code or any external
+content repo, this role checks whether *any* parsed VM already carries
+`bastions` in its `AnsibleGroup` tag; if none do, it rewrites the **first**
+VM's tag to be `bastions` — **dropping `isolated` specifically**, not just
+adding `bastions` alongside it (any other, unrelated token in the same tag is
+preserved).
+
+**Why drop `isolated` entirely, not just add `bastions` alongside it
+(live-tested, GPTEINFRA-17763 guid `hcshc`):** an earlier version of this
+fixup only *prepended* `bastions,` while keeping `isolated` (e.g.
+`bastions,isolated`), mirroring `cloud-vms-base`'s own `"bastions,showroom"`
+bastion convention. That correctly got the VM targeted by `bastions:`-scoped
+workload plays (`pre_software_workloads.bastions` ran `control_user`/
+`asset_injector` successfully), but SSH itself still failed with `Could not
+resolve hostname vscode` — because `agnosticd-v2`'s "Step 001.3 Configure
+Linux hosts and wait for connection" (`hosts: all:!windows:!network:!isolated`)
+is what actually sets `ansible_ssh_extra_args: -F <generated ssh_config>`, and
+it excludes *any* host still tagged `isolated`, even if also tagged
+`bastions`. Without that fact set, Ansible fell back to a raw `ssh vscode`
+with no `-F` flag, and the bare hostname doesn't resolve outside the
+generated per-guid ssh_config's `Host` alias. Dropping `isolated` entirely
+(leaving just `bastions`) resolves this, since the VM is then no longer
+excluded from Step 001.3 either. `ansible.builtin.add_host`'s `groups:`
+parameter splitting a comma-joined string into multiple inventory groups
+(confirmed directly against `ansible-core`'s `add_host` action plugin source)
+is still what makes plain `bastions` alone sufficient for every other purpose
+(workload targeting, `create_inventory`'s bastion detection, SSH config
+generation).
+
+This is a no-op for content that already tags its bastion-equivalent VM
+`bastions` (RHEL BU, HP BU, and any Ansible BU lab that already does the right
+thing), and is a no-op for an empty `virtualmachines` list. Set
+`zt_base_config_ensure_bastion_group: false` to disable it entirely.
+
+**Downstream consequence for catalog authors:** since this VM's `AnsibleGroup`
+may no longer include `isolated` after this fixup runs, any catalog-item
+Jinja that reads `groups['isolated'][0]` (Ansible BU's v1-era convention for
+"the access VM") should be changed to `groups['bastions'][0]` instead — which
+is guaranteed to resolve to this same VM, and matches RHEL BU/HP BU's own
+existing convention. See `tests/zt-ansiblebu-base-component/common.yaml` in
+`rhpds/agnosticv` for the corrected pattern.
 
 ## Catalog wiring
 

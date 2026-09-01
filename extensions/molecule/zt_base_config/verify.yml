@@ -38,3 +38,36 @@
           - instances is defined
           - networks is defined
         fail_msg: "One or more zt_base_config output facts did not persist via the fact cache."
+
+    # zt-ans-bu-eda-netbox (this scenario's real fixture repo) tags every one
+    # of its VMs AnsibleGroup: isolated only - the exact real-world case the
+    # bastion-group fixup exists for (see roles/zt_base_config/README.md
+    # "Bastion group fixup"). Assert the fixup actually ran against real
+    # content, not just a synthetic unit-test shape.
+    - name: Assert the first VM's AnsibleGroup tag was patched to exactly "bastions" (isolated dropped)
+      vars:
+        _first_vm_tags: "{{ (instances | default([]) | first).tags | default([]) }}"
+        _first_vm_group: >-
+          {{ (_first_vm_tags | selectattr('key', 'equalto', 'AnsibleGroup') | map(attribute='value') | list | first) | default('') }}
+      ansible.builtin.assert:
+        that:
+          - instances | default([]) | length > 0
+          - _first_vm_group == 'bastions'
+        fail_msg: >-
+          Expected the first parsed VM's AnsibleGroup tag to be exactly
+          "bastions" (zt-ans-bu-eda-netbox tags it "isolated" only in the real
+          content repo, and "isolated" must be dropped entirely, not just
+          supplemented - see README "Bastion group fixup" for why keeping
+          both left SSH unresolvable live), got:
+          {{ _first_vm_group | default('UNDEFINED') }}
+
+    - name: Assert other VMs' AnsibleGroup tags were left untouched
+      vars:
+        _other_vm_tags: "{{ (instances | default([]))[1:] | map(attribute='tags', default=[]) | flatten }}"
+        _other_vm_groups: "{{ _other_vm_tags | selectattr('key', 'equalto', 'AnsibleGroup') | map(attribute='value') | list }}"
+      ansible.builtin.assert:
+        that:
+          - "'bastions' not in (_other_vm_groups | join(','))"
+        fail_msg: >-
+          Expected only the first VM to be patched with "bastions", but found
+          it in a later VM's AnsibleGroup tag too: {{ _other_vm_groups }}

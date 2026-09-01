@@ -187,10 +187,18 @@
           | sort(attribute='metadata.creationTimestamp', reverse=true)
           | first).metadata.name }}
     container: "{{ zt_pair[0].name }}"
-    command:
-      - /bin/sh
-      - -c
-      - "{{ zt_pair[1] }}"
+    # kubernetes.core.k8s_exec's `command` option is documented and enforced
+    # as type: str (see its argspec()), not a list - passing a YAML list here
+    # gets stringified by Ansible's own type coercion into a Python list
+    # repr (e.g. "['/bin/sh', '-c', '...']") before the module ever sees it.
+    # The module then calls shlex.split() on that mangled string itself, which
+    # reliably fails with "No closing quotation" on any command containing
+    # quotes (e.g. curl -d '{"key": "value"}') - confirmed live against a
+    # real cluster with zt-ans-bu-dev-tools' gitea commands. Fix: pass a
+    # single string built with Ansible's `quote` filter (shlex.quote), which
+    # round-trips correctly through the module's own shlex.split() to yield
+    # exactly ["/bin/sh", "-c", "<original command, verbatim>"].
+    command: "/bin/sh -c {{ zt_pair[1] | quote }}"
   register: r_zt_container_commands
   no_log: true
   retries: "{{ zt_containers_command_retries }}"
