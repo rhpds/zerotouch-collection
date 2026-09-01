@@ -5,10 +5,34 @@
   vars:
     guid: molecule
     # rhpds/zt-ans-bu-eda-netbox is the one confirmed-real public repo using
-    # the containers: feature — see roles/zt_containers/README.md.
+    # the containers: feature — see roles/zt_containers/README.md. It also
+    # tags every one of its VMs AnsibleGroup: isolated only, making it the
+    # real-world fixture for both halves of the bastion-group fixup test
+    # below (default false = no-op, explicit true = opt-in promotion).
     ocp4_workload_showroom_content_git_repo: https://github.com/rhpds/zt-ans-bu-eda-netbox.git
     ocp4_workload_showroom_content_git_repo_ref: main
   tasks:
-    - name: Run zt_base_config against a real public fixture repo
+    # Run 1: zt_base_config_ensure_bastion_group left at its default (false).
+    # Covers the new default behavior - no VM should be promoted, every VM's
+    # AnsibleGroup tag stays exactly as the content repo wrote it.
+    - name: Run zt_base_config against a real public fixture repo (default zt_base_config_ensure_bastion_group)
       ansible.builtin.include_role:
         name: rhpds.zerotouch.zt_base_config
+
+    - name: Capture the default-run instances fact before the opt-in run overwrites it
+      ansible.builtin.set_fact:
+        _molecule_default_run_instances: "{{ instances }}"
+        cacheable: true
+
+    # Run 2: same fixture repo, explicit opt-in. Covers the fixup itself -
+    # the first VM should be promoted to bastions, dropping isolated.
+    - name: Run zt_base_config again with zt_base_config_ensure_bastion_group explicitly true
+      vars:
+        zt_base_config_ensure_bastion_group: true
+      ansible.builtin.include_role:
+        name: rhpds.zerotouch.zt_base_config
+
+    - name: Capture the opt-in-run instances fact
+      ansible.builtin.set_fact:
+        _molecule_optin_run_instances: "{{ instances }}"
+        cacheable: true

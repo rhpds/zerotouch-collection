@@ -110,9 +110,51 @@
         | list
         | length) > 0 }}
 
+# Default false (not true): making this opt-in, rather than defaulting to
+# silently rewriting a content author's own tags, is a deliberate reversal
+# from an earlier version of this role. Confirmed live TWICE
+# (GPTEINFRA-17763, guids 62n8j/bfvrx for zt-ans-bu-eda-netbox and d9v4h for
+# zt-ans-bu-windows-ad) that defaulting to true actively breaks
+# content that was already working correctly under v1: both repos tag
+# every VM isolated-only *on purpose* (no VM is meant to be Ansible-managed
+# at all - access is purely via showroom's per-VM wetty sidecars using
+# each VM's own cloud-init-baked creds), and the old true-default promoted
+# their first VM ("control") out of isolated into bastions regardless,
+# pulling it into cloud-vms-base's generic cloud-user-based connection
+# setup - which "control" cannot support (no cloud-user account on that
+# image). v1 never did this kind of tag-rewriting at all. A content repo
+# that genuinely needs a real Ansible-managed bastion (e.g.
+# zt-ans-bu-dev-tools, a single-VM lab needing groups['bastions'][0] to
+# resolve) should tag that VM AnsibleGroup: bastions directly in its own
+# config/instances.yaml - this role's fixup is an escape hatch for
+# catalog authors who can't or don't want to touch the content repo
+# itself, not a silent default behavior.
+- name: Report the bastion-group decision for this lab
+  vars:
+    _zt_base_config_msg_has_bastion: >-
+      At least one VM already tags AnsibleGroup: bastions - zt_base_config_ensure_bastion_group has no effect.
+    _zt_base_config_msg_no_vms: >-
+      No VMs parsed from instances.yaml - zt_base_config_ensure_bastion_group has no effect.
+    _zt_base_config_msg_promoting: >-
+      No VM tags AnsibleGroup: bastions, and zt_base_config_ensure_bastion_group is true - promoting
+      "{{ _zt_base_config_vms[0].name | default('the first VM') }}" to bastions (dropping isolated if present).
+    _zt_base_config_msg_default_noop: >-
+      No VM tags AnsibleGroup: bastions. zt_base_config_ensure_bastion_group is false (the default) - leaving
+      every VM's tags as-is; all VMs stay excluded from cloud-vms-base's generic Linux host pipeline. If this
+      lab needs an Ansible-managed bastion (e.g. for wait_for_connection, control_user/asset_injector, or a
+      catalog Jinja expression reading groups['bastions'][0]), either tag the right VM AnsibleGroup: bastions
+      in this repo's own config/instances.yaml, or set zt_base_config_ensure_bastion_group: true for this
+      catalog item.
+  ansible.builtin.debug:
+    msg: >-
+      {{ _zt_base_config_msg_has_bastion if _zt_base_config_has_bastion_tag
+        else _zt_base_config_msg_no_vms if (_zt_base_config_vms | length == 0)
+        else _zt_base_config_msg_promoting if (zt_base_config_ensure_bastion_group | default(false) | bool)
+        else _zt_base_config_msg_default_noop }}
+
 - name: Ensure at least one VM's AnsibleGroup tag includes "bastions"
   when:
-    - zt_base_config_ensure_bastion_group | default(true) | bool
+    - zt_base_config_ensure_bastion_group | default(false) | bool
     - _zt_base_config_vms | length > 0
     - not _zt_base_config_has_bastion_tag
   block:

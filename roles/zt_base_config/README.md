@@ -15,9 +15,9 @@ mirror of that repo, parses them, and publishes the results as facts:
 - `containers` (from `instances.yaml`'s `containers` key — consumed by
   [`zt_containers`](../zt_containers/README.md))
 - `instances` (from `instances.yaml`'s `virtualmachines` key, with the
-  `INSTANCEGUID` placeholder replaced by the real `guid`, and — unless no VM
-  needs it or `zt_base_config_ensure_bastion_group` is `false` — the first VM's
-  `AnsibleGroup` tag patched to include `bastions`; see "Bastion group
+  `INSTANCEGUID` placeholder replaced by the real `guid`, and — only when
+  `zt_base_config_ensure_bastion_group` is explicitly set `true` — the first
+  VM's `AnsibleGroup` tag patched to include `bastions`; see "Bastion group
   fixup" below)
 - `networks` (the full parsed contents of `networks.yaml`)
 
@@ -59,47 +59,83 @@ never `bastions` — confirmed against every real Ansible BU lab checked so far
 `infrastructure_deployment.yml`) — a VM tagged only `isolated` gets no
 SSH/wait-for-connection and no `control_user`/`asset_injector` at all.
 
-To bridge this without touching shared `agnosticd-v2` code or any external
-content repo, this role checks whether *any* parsed VM already carries
-`bastions` in its `AnsibleGroup` tag; if none do, it rewrites the **first**
-VM's tag to be `bastions` — **dropping `isolated` specifically**, not just
-adding `bastions` alongside it (any other, unrelated token in the same tag is
-preserved).
+For labs that genuinely need one of their VMs to be a real Ansible-managed
+bastion (e.g. `zt-ans-bu-dev-tools`, a single-VM lab needing
+`groups['bastions'][0]` to resolve for a showroom hostname), this role can
+rewrite the **first** VM's tag to be `bastions` — **dropping `isolated`
+specifically**, not just adding `bastions` alongside it (any other,
+unrelated token in the same tag is preserved) — when set
+`zt_base_config_ensure_bastion_group: true`. **This is opt-in, not the
+default.**
 
-**Why drop `isolated` entirely, not just add `bastions` alongside it
-(live-tested, GPTEINFRA-17763 guid `hcshc`):** an earlier version of this
-fixup only *prepended* `bastions,` while keeping `isolated` (e.g.
-`bastions,isolated`), mirroring `cloud-vms-base`'s own `"bastions,showroom"`
-bastion convention. That correctly got the VM targeted by `bastions:`-scoped
-workload plays (`pre_software_workloads.bastions` ran `control_user`/
-`asset_injector` successfully), but SSH itself still failed with `Could not
-resolve hostname vscode` — because `agnosticd-v2`'s "Step 001.3 Configure
-Linux hosts and wait for connection" (`hosts: all:!windows:!network:!isolated`)
-is what actually sets `ansible_ssh_extra_args: -F <generated ssh_config>`, and
-it excludes *any* host still tagged `isolated`, even if also tagged
-`bastions`. Without that fact set, Ansible fell back to a raw `ssh vscode`
-with no `-F` flag, and the bare hostname doesn't resolve outside the
-generated per-guid ssh_config's `Host` alias. Dropping `isolated` entirely
-(leaving just `bastions`) resolves this, since the VM is then no longer
-excluded from Step 001.3 either. `ansible.builtin.add_host`'s `groups:`
-parameter splitting a comma-joined string into multiple inventory groups
-(confirmed directly against `ansible-core`'s `add_host` action plugin source)
-is still what makes plain `bastions` alone sufficient for every other purpose
-(workload targeting, `create_inventory`'s bastion detection, SSH config
-generation).
+**Why this is opt-in (`zt_base_config_ensure_bastion_group` defaults
+`false`), not a default-on rewrite:** an earlier version of this role
+defaulted to `true`, silently promoting the first VM whenever no VM already
+tagged `bastions`. Live-tested TWICE that this actively breaks content that
+was already working correctly under v1 (GPTEINFRA-17763, guids `62n8j`/
+`bfvrx` for `zt-ans-bu-eda-netbox`, `d9v4h` for `zt-ans-bu-windows-ad`): both
+repos tag *every* VM `isolated`-only on purpose — no VM is meant to be
+Ansible-managed at all, access is purely via showroom's per-VM wetty
+sidecars using each VM's own cloud-init-baked credentials. The old
+true-default promoted their first VM ("control") out of `isolated` into
+`bastions` regardless, pulling it into `cloud-vms-base`'s generic
+cloud-user-based connection setup:
 
-This is a no-op for content that already tags its bastion-equivalent VM
-`bastions` (RHEL BU, HP BU, and any Ansible BU lab that already does the right
-thing), and is a no-op for an empty `virtualmachines` list. Set
-`zt_base_config_ensure_bastion_group: false` to disable it entirely.
+```
+fatal: [control]: FAILED! => {"msg": "timed out waiting for ping module
+test: Failed to connect to the host via ssh: cloud-user@ssh.ocpvdev01.rhdp.net:
+Permission denied (publickey, gssapi-keyex, gssapi-with-mic, password)."}
+```
 
-**Downstream consequence for catalog authors:** since this VM's `AnsibleGroup`
-may no longer include `isolated` after this fixup runs, any catalog-item
-Jinja that reads `groups['isolated'][0]` (Ansible BU's v1-era convention for
-"the access VM") should be changed to `groups['bastions'][0]` instead — which
-is guaranteed to resolve to this same VM, and matches RHEL BU/HP BU's own
+— which "control" cannot support (confirmed via direct SSH into a real v1
+order for the identical content, guid `bfvrx`: `cloud-user` doesn't exist on
+this image in v1 either). v1 never did this kind of tag-rewriting at all. A
+content repo that genuinely needs a real Ansible-managed bastion should tag
+that VM `AnsibleGroup: bastions` directly in its own `config/instances.yaml`
+— this role's fixup is an escape hatch for catalog authors who can't or
+don't want to touch the content repo itself, not a silent default behavior.
+
+**Why drop `isolated` entirely, not just add `bastions` alongside it, when
+the fixup does run (live-tested, GPTEINFRA-17763 guid `hcshc`):** an earlier
+revision of this fixup only *prepended* `bastions,` while keeping `isolated`
+(e.g. `bastions,isolated`), mirroring `cloud-vms-base`'s own
+`"bastions,showroom"` bastion convention. That correctly got the VM targeted
+by `bastions:`-scoped workload plays (`pre_software_workloads.bastions` ran
+`control_user`/`asset_injector` successfully), but SSH itself still failed
+with `Could not resolve hostname vscode` — because `agnosticd-v2`'s "Step
+001.3 Configure Linux hosts and wait for connection"
+(`hosts: all:!windows:!network:!isolated`) is what actually sets
+`ansible_ssh_extra_args: -F <generated ssh_config>`, and it excludes *any*
+host still tagged `isolated`, even if also tagged `bastions`. Without that
+fact set, Ansible fell back to a raw `ssh vscode` with no `-F` flag, and the
+bare hostname doesn't resolve outside the generated per-guid ssh_config's
+`Host` alias. Dropping `isolated` entirely (leaving just `bastions`)
+resolves this, since the VM is then no longer excluded from Step 001.3
+either. `ansible.builtin.add_host`'s `groups:` parameter splitting a
+comma-joined string into multiple inventory groups (confirmed directly
+against `ansible-core`'s `add_host` action plugin source) is still what
+makes plain `bastions` alone sufficient for every other purpose (workload
+targeting, `create_inventory`'s bastion detection, SSH config generation).
+
+This is a no-op (regardless of `zt_base_config_ensure_bastion_group`) for
+content that already tags its bastion-equivalent VM `bastions` (RHEL BU, HP
+BU, and any Ansible BU lab that already does the right thing), and a no-op
+for an empty `virtualmachines` list. The role always reports its decision —
+whether it found an existing `bastions` tag, promoted a VM, or left every VM
+untouched (with guidance on how to opt in) — via an unconditional
+`ansible.builtin.debug` message, so this is never a silent no-op.
+
+**Downstream consequence for catalog authors:** if you do opt in
+(`zt_base_config_ensure_bastion_group: true`), the promoted VM's
+`AnsibleGroup` will no longer include `isolated`, so any catalog-item Jinja
+that reads `groups['isolated'][0]` (Ansible BU's v1-era convention for "the
+access VM") should be changed to `groups['bastions'][0]` instead — which is
+guaranteed to resolve to this same VM, and matches RHEL BU/HP BU's own
 existing convention. See `tests/zt-ansiblebu-base-component/common.yaml` in
-`rhpds/agnosticv` for the corrected pattern.
+`rhpds/agnosticv` for the corrected pattern (including a
+`groups['bastions'][0] if ... else groups['isolated'][0]` fallback for
+content that leaves `zt_base_config_ensure_bastion_group` at its `false`
+default, where no VM ever gets promoted).
 
 ## Catalog wiring
 

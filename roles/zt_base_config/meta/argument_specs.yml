@@ -68,21 +68,27 @@ argument_specs:
         description: Delay in seconds between config file fetch retries.
       zt_base_config_ensure_bastion_group:
         type: bool
-        default: true
+        default: false
         description: >-
-          When true (default), and no parsed VM already carries "bastions" in
-          its AnsibleGroup tag, rewrite the first VM's AnsibleGroup tag to be
+          When true, and no parsed VM already carries "bastions" in its
+          AnsibleGroup tag, rewrite the first VM's AnsibleGroup tag to be
           "bastions" - dropping "isolated" specifically if present (any other
           coexisting token is preserved) - so it isn't silently excluded from
-          cloud-vms-base's generic Linux host pipeline. Some BUs' content
-          repos tag their access VM AnsibleGroup: isolated only, which
-          cloud-vms-base/openshift_cnv treats as a reserved exclusion group
-          (same tier as windows/network) - without this, that VM gets no
-          SSH/wait-for-connection and no control_user/asset_injector at all.
+          cloud-vms-base's generic Linux host pipeline. Defaults to false:
+          this is an opt-in escape hatch for catalog authors who can't or
+          don't want to touch a lab's content repo, not a silent default
+          behavior - live-confirmed (GPTEINFRA-17763, zt-ans-bu-eda-netbox
+          and zt-ans-bu-windows-ad) that defaulting to true actively breaks
+          content where every VM is deliberately isolated-only with no real
+          bastion by design (no VM is meant to be Ansible-managed at all -
+          access is purely via showroom's per-VM wetty sidecars), by
+          promoting a VM that can't support cloud-vms-base's cloud-user-based
+          connection setup. A lab that genuinely needs a real Ansible-managed
+          bastion (e.g. a single-VM lab needing groups['bastions'][0] to
+          resolve) should tag that VM AnsibleGroup: bastions directly in its
+          own config/instances.yaml instead of relying on this rewrite.
           Isolated is dropped entirely, not just supplemented with bastions,
           because agnosticd-v2's own connection-setup step ("Configure Linux
           hosts and wait for connection") excludes any host still tagged
           isolated regardless of also being tagged bastions (live-confirmed:
-          keeping both tags left SSH unresolvable). Set to false to disable
-          this rewrite if a lab's content repo already tags its own bastion
-          correctly, or if you want isolated-only VMs to stay fully excluded.
+          keeping both tags left SSH unresolvable).
