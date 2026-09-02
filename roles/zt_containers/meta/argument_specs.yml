@@ -70,8 +70,10 @@ argument_specs:
           cpu:
             type: str
             description: >-
-              CPU request (100m default) and limit (500m default) for the
-              container.
+              CPU value for the container. When unset, defaults to a
+              Burstable QoS shape (100m request / 500m limit). When set,
+              the same value is used as both request and limit (Guaranteed
+              QoS) - request and limit are not independently configurable.
           services:
             type: list
             elements: dict

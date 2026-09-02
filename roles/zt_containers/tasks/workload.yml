@@ -54,10 +54,10 @@
                     memory: "{{ zt_container.memory | default('256Mi') }}"
                     cpu: "{{ zt_container.cpu | default('500m') }}"
             volumes: "{{ zt_container.volumes | default(omit) }}"
-  register: r_zt_container_deploy
+  register: r_zt_containers_deploy
   retries: "{{ zt_containers_k8s_retries }}"
   delay: "{{ zt_containers_k8s_delay }}"
-  until: r_zt_container_deploy is not failed
+  until: r_zt_containers_deploy is not failed
   loop: "{{ containers }}"
   loop_control:
     loop_var: zt_container
@@ -101,10 +101,10 @@
         selector:
           app.kubernetes.io/name: "{{ zt_pair[0].name }}"
         ports: "{{ zt_pair[1].ports }}"
-  register: r_zt_container_service
+  register: r_zt_containers_service
   retries: "{{ zt_containers_k8s_retries }}"
   delay: "{{ zt_containers_k8s_delay }}"
-  until: r_zt_container_service is not failed
+  until: r_zt_containers_service is not failed
   loop: "{{ containers | subelements('services', skip_missing=True) }}"
   loop_control:
     loop_var: zt_pair
@@ -134,10 +134,10 @@
         tls: >-
           {{ {'termination': zt_pair[1].tls_termination | default('edge')}
              if zt_pair[1].tls | default(false) else omit }}
-  register: r_zt_container_route
+  register: r_zt_containers_route
   retries: "{{ zt_containers_k8s_retries }}"
   delay: "{{ zt_containers_k8s_delay }}"
-  until: r_zt_container_route is not failed
+  until: r_zt_containers_route is not failed
   loop: "{{ containers | subelements('routes', skip_missing=True) }}"
   loop_control:
     loop_var: zt_pair
@@ -190,11 +190,11 @@
     # round-trips correctly through the module's own shlex.split() to yield
     # exactly ["/bin/sh", "-c", "<original command, verbatim>"].
     command: "/bin/sh -c {{ zt_pair[1] | quote }}"
-  register: r_zt_container_commands
+  register: r_zt_containers_commands
   no_log: true
   retries: "{{ zt_containers_command_retries }}"
   delay: "{{ zt_containers_command_delay }}"
-  until: r_zt_container_commands is not failed
+  until: r_zt_containers_commands is not failed
   loop: "{{ containers | subelements('commands', skip_missing=True) }}"
   loop_control:
     loop_var: zt_pair
