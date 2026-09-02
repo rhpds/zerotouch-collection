@@ -46,7 +46,9 @@ argument_specs:
             type: dict
             description: >-
               Environment variables as a flat key/value dict, converted to
-              the Kubernetes env: list internally.
+              the Kubernetes env: list internally. Values are coerced to
+              strings (Kubernetes' EnvVar.value is a string field), so e.g.
+              a YAML boolean or integer value is sent as its string form.
           volumeMounts:
             type: list
             elements: dict

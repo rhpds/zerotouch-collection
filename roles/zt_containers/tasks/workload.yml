@@ -10,6 +10,8 @@
     quiet: true
 
 - name: Deploy each container entry as its own Deployment
+  vars:
+    _zt_container_environment: "{{ zt_container.environment | default({}) }}"
   kubernetes.core.k8s:
     host: "{{ zt_containers_openshift_api_url }}"
     api_key: "{{ zt_containers_openshift_api_key }}"
@@ -39,7 +41,10 @@
               - name: "{{ zt_container.name }}"
                 image: "{{ zt_container.image }}"
                 ports: "{{ zt_container.ports | default(omit) }}"
-                env: "{{ zt_container.environment | default({}) | dict2items(key_name='name', value_name='value') }}"
+                env: >-
+                  {{ dict(_zt_container_environment.keys() | list
+                     | zip(_zt_container_environment.values() | map('string') | list))
+                     | dict2items(key_name='name', value_name='value') }}
                 volumeMounts: "{{ zt_container.volumeMounts | default(omit) }}"
                 resources:
                   requests:
