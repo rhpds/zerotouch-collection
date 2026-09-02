@@ -21,7 +21,7 @@
 
 - name: Compute the raw githubusercontent config directory URL
   ansible.builtin.set_fact:
-    zt_base_config_git_config_directory: >-
+    _zt_base_config_git_config_directory: >-
       {{ zt_base_config_content_git_repo
         | regex_replace('^https://github\.com/', 'https://raw.githubusercontent.com/')
         | regex_replace('\.git$', '/' + zt_base_config_content_git_repo_ref + '/config/') }}
@@ -29,7 +29,7 @@
 
 - name: Fetch firewall.yaml from the content repo
   ansible.builtin.uri:
-    url: "{{ zt_base_config_git_config_directory + zt_base_config_firewall_file }}"
+    url: "{{ _zt_base_config_git_config_directory + zt_base_config_firewall_file }}"
     return_content: true
     status_code: "{{ [200] if zt_base_config_lookup_errors == 'strict' else [200, 404] }}"
   register: r_zt_base_config_firewall
@@ -41,7 +41,7 @@
   ansible.builtin.debug:
     msg: >-
       firewall.yaml not found at
-      {{ zt_base_config_git_config_directory }}{{ zt_base_config_firewall_file }};
+      {{ _zt_base_config_git_config_directory }}{{ zt_base_config_firewall_file }};
       continuing with no extra lockdown rules from this file.
   when:
     - r_zt_base_config_firewall.status == 404
@@ -55,7 +55,7 @@
 
 - name: Fetch instances.yaml from the content repo
   ansible.builtin.uri:
-    url: "{{ zt_base_config_git_config_directory + zt_base_config_instances_file }}"
+    url: "{{ _zt_base_config_git_config_directory + zt_base_config_instances_file }}"
     return_content: true
     status_code: [200]
   register: r_zt_base_config_instances
@@ -191,7 +191,7 @@
 
 - name: Fetch networks.yaml from the content repo
   ansible.builtin.uri:
-    url: "{{ zt_base_config_git_config_directory + zt_base_config_networks_file }}"
+    url: "{{ _zt_base_config_git_config_directory + zt_base_config_networks_file }}"
     return_content: true
     status_code: [200]
   register: r_zt_base_config_networks
