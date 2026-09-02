@@ -141,7 +141,7 @@
         port:
           targetPort: "{{ zt_pair[1].targetPort }}"
         tls: >-
-          {{ {'termination': (zt_pair[1].tls_termination | default('edge')) | capitalize}
+          {{ {'termination': zt_pair[1].tls_termination | default('edge')}
              if zt_pair[1].tls | default(false) else omit }}
   register: r_zt_container_route
   retries: 10
