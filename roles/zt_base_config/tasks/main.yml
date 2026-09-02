@@ -23,8 +23,8 @@
   ansible.builtin.set_fact:
     zt_base_config_git_config_directory: >-
       {{ zt_base_config_content_git_repo
-        | replace('.git', '/' + zt_base_config_content_git_repo_ref + '/config/')
-        | replace('github.com', 'raw.githubusercontent.com') }}
+        | regex_replace('^https://github\.com/', 'https://raw.githubusercontent.com/')
+        | regex_replace('\.git$', '/' + zt_base_config_content_git_repo_ref + '/config/') }}
     cacheable: true
 
 - name: Fetch firewall.yaml from the content repo
