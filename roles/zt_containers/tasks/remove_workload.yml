@@ -10,8 +10,8 @@
     namespace: "{{ zt_containers_namespace }}"
     name: "{{ zt_pair[1].name }}"
   register: r_zt_container_route_remove
-  retries: 10
-  delay: 5
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_container_route_remove is not failed
   failed_when: >-
     r_zt_container_route_remove is failed and
@@ -32,8 +32,8 @@
     namespace: "{{ zt_containers_namespace }}"
     name: "{{ zt_pair[1].name }}"
   register: r_zt_container_service_remove
-  retries: 10
-  delay: 5
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_container_service_remove is not failed
   failed_when: >-
     r_zt_container_service_remove is failed and
@@ -54,8 +54,8 @@
     namespace: "{{ zt_containers_namespace }}"
     name: "{{ zt_container.name }}"
   register: r_zt_container_deploy_remove
-  retries: 10
-  delay: 5
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_container_deploy_remove is not failed
   failed_when: >-
     r_zt_container_deploy_remove is failed and

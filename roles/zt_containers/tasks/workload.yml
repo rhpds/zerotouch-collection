@@ -50,8 +50,8 @@
                     cpu: "{{ zt_container.cpu | default('500m') }}"
             volumes: "{{ zt_container.volumes | default(omit) }}"
   register: r_zt_container_deploy
-  retries: 10
-  delay: 5
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_container_deploy is not failed
   loop: "{{ containers }}"
   loop_control:
@@ -97,8 +97,8 @@
           app.kubernetes.io/name: "{{ zt_pair[0].name }}"
         ports: "{{ zt_pair[1].ports }}"
   register: r_zt_container_service
-  retries: 10
-  delay: 5
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_container_service is not failed
   loop: "{{ containers | subelements('services', skip_missing=True) }}"
   loop_control:
@@ -130,8 +130,8 @@
           {{ {'termination': zt_pair[1].tls_termination | default('edge')}
              if zt_pair[1].tls | default(false) else omit }}
   register: r_zt_container_route
-  retries: 10
-  delay: 5
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_container_route is not failed
   loop: "{{ containers | subelements('routes', skip_missing=True) }}"
   loop_control:
@@ -149,8 +149,8 @@
     label_selectors:
       - "app.kubernetes.io/name={{ zt_container.name }}"
   register: r_zt_containers_pods
-  retries: 20
-  delay: 5
+  retries: "{{ ((zt_containers_wait_timeout | int) / (zt_containers_k8s_delay | int)) | round(0, 'ceil') | int }}"
+  delay: "{{ zt_containers_k8s_delay }}"
   until: >-
     r_zt_containers_pods.resources | default([])
     | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
