@@ -22,7 +22,7 @@ duplicated — see "What's deliberately not in this collection" below.
 |------|---------|
 | `rhpds.zerotouch.zt_base_config` | Dynamic per-lab config loader — fetches firewall/instances/networks config from a lab's content git repo. See [role README](roles/zt_base_config/README.md). |
 | `rhpds.zerotouch.zt_security_lockdown` | Applies the CNV NetworkPolicy that locks a ZT sandbox namespace down to only the traffic it needs. See [role README](roles/zt_security_lockdown/README.md). |
-| `rhpds.zerotouch.zt_containers` | Provisions the `containers:` sidecar list (Deployment + optional Service/Route per entry) — new capability, not a v1 port. See [role README](roles/zt_containers/README.md). |
+| `rhpds.zerotouch.zt_containers` | Provisions the `containers:` sidecar list (Deployment + optional Service/Route per entry, with optional `pod:` grouping for multi-container Pods) — new capability, not a v1 port. See [role README](roles/zt_containers/README.md). |
 
 (Rendered as a table here for a quick scan — see each role's own README for
 full detail, since GitHub renders Markdown tables fine even though our

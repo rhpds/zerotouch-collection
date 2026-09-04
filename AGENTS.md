@@ -35,7 +35,7 @@ README.md                           User-facing docs: role table, catalog wiring
 roles/
   zt_base_config/                   Dynamic per-lab config loader (firewall/instances/networks from content git repo)
   zt_security_lockdown/             CNV NetworkPolicy lockdown for ZT sandbox namespaces
-  zt_containers/                    Provisions the `containers:` sidecar list (Deployment + Service/Route per entry)
+  zt_containers/                    Provisions the `containers:` sidecar list (Deployment + Service/Route per entry, or per pod: group)
   <role>/tasks/                     main.yml (+ workload.yml/remove_workload.yml for zt_containers)
   <role>/defaults/main.yml          Default variable values
   <role>/meta/argument_specs.yml    Full option reference — single source of truth for variables
@@ -99,6 +99,7 @@ tests/static/                       yamllint + ansible-lint tox environment (tox
 - `zt_security_lockdown`'s default egress rules have no explicit rule for the OpenShift API server (443/6443), ported verbatim from v1. Confirmed real via live testing (a raw `nc`/authenticated `curl` to the in-cluster API times out), but confirmed non-blocking in practice — `zerotouch-automation`'s `core/user_data.py` treats the in-cluster K8s API as a non-fatal fallback. Add a rule via `zero_touch_egress_lockdown_rules` if a lab actually depends on that fallback path.
 - `route.openshift.io/v1` `Route` objects only exist on OpenShift, so `zt_containers`' Route creation can only be fully exercised on a real OpenShift/CNV cluster (or `kind` + a manually-applied Route CRD for structural validation only).
 - `zt_base_config_ensure_bastion_group` defaults `false`, not `true` — an earlier revision defaulted `true` and silently broke real Ansible BU labs (`zt-ans-bu-eda-netbox`, `zt-ans-bu-windows-ad`) where every VM is deliberately `isolated`-only by design. When the fixup does run, it drops `isolated` entirely rather than just adding `bastions` alongside it — keeping both tags left the VM excluded from v2 core's Linux connection-setup step and SSH unresolvable. See `zt_base_config`'s README for the full live-testing writeup.
+- `zt_containers`' `pod:` grouping bundles multiple `containers[]` entries into one Deployment/Pod, sharing one network namespace — containers in the same group must use distinct listening ports, since a second bind to the same port fails with a real OS-level `EADDRINUSE` that neither the Kubernetes API nor this role's validation can catch ahead of time. See `zt_containers`' README for the full write-up, including the separate (no-schema-change) option of just using Service DNS across separate Deployments for containers that only need to reach each other on an already-allowed `zt_security_lockdown` port.
 
 ## Git Workflow
 

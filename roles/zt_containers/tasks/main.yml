@@ -13,6 +13,49 @@
       to be set when any container declares routes.
     quiet: true
 
+- name: Resolve each container entry's pod-group name and build its Pod-spec container definition
+  vars:
+    _zt_container_environment: "{{ zt_container.environment | default({}) }}"
+  ansible.builtin.set_fact:
+    # _zt_containers carries, per containers[] entry:
+    #   - pod_group: the pod: value, defaulting to this entry's own name - entries
+    #     sharing a pod_group get bundled into one Deployment/Pod together.
+    #   - volumes: this entry's own volumes: list (default []), merged/deduped by
+    #     name across all of a group's members when building that group's Pod spec.
+    #   - k8s_spec: this entry's own fully-built PodSpec containers[] item - moved
+    #     here (rather than built inline in the Deployment task) because Jinja has
+    #     no per-item dict-transform filter, so each member's spec has to be
+    #     computed while we still have a plain per-entry loop_var to work with.
+    _zt_containers: >-
+      {{ (_zt_containers | default([])) + [{
+        'name': zt_container.name,
+        'pod_group': zt_container.pod | default(zt_container.name),
+        'volumes': zt_container.volumes | default([]),
+        'k8s_spec': {
+          'name': zt_container.name,
+          'image': zt_container.image,
+          'ports': zt_container.ports | default(omit),
+          'env': dict(_zt_container_environment.keys() | list
+              | zip(_zt_container_environment.values() | map('string') | list))
+              | dict2items(key_name='name', value_name='value'),
+          'volumeMounts': zt_container.volumeMounts | default(omit),
+          'resources': {
+            'requests': {
+              'memory': zt_container.memory | default('256Mi'),
+              'cpu': zt_container.cpu | default('100m')
+            },
+            'limits': {
+              'memory': zt_container.memory | default('256Mi'),
+              'cpu': zt_container.cpu | default('500m')
+            }
+          }
+        }
+      }] }}
+  loop: "{{ containers }}"
+  loop_control:
+    loop_var: zt_container
+    label: "{{ zt_container.name }}"
+
 - name: Running zt_containers provision tasks
   when: ACTION in ['provision', 'create']
   ansible.builtin.include_tasks: workload.yml

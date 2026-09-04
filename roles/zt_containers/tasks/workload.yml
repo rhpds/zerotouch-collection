@@ -9,9 +9,16 @@
       name; duplicate names would cause Deployments/pod lookups to collide.
     quiet: true
 
-- name: Deploy each container entry as its own Deployment
+- name: Deploy each pod group as its own Deployment
   vars:
-    _zt_container_environment: "{{ zt_container.environment | default({}) }}"
+    # Every containers[] entry whose pod: value (default: its own name)
+    # resolves to this group - one Pod-spec containers[] item per member.
+    _zt_pod_group_members: "{{ _zt_containers | selectattr('pod_group', 'equalto', zt_pod_group) | list }}"
+    # Union of all members' volumes:, deduped by name (first occurrence wins)
+    # - matches the "declare the shared volume once, mount it from each
+    # container that needs it" pattern. Omitted entirely when no member
+    # declares any volumes, same as today's single-container case.
+    _zt_pod_group_volumes: "{{ _zt_pod_group_members | map(attribute='volumes') | sum(start=[]) | unique(attribute='name') | list }}"
   kubernetes.core.k8s:
     host: "{{ zt_containers_openshift_api_url }}"
     api_key: "{{ zt_containers_openshift_api_key }}"
@@ -20,50 +27,35 @@
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: "{{ zt_container.name }}"
+        name: "{{ zt_pod_group }}"
         namespace: "{{ zt_containers_namespace }}"
         labels:
           guid: "{{ guid }}"
-          app.kubernetes.io/name: "{{ zt_container.name }}"
+          app.kubernetes.io/name: "{{ zt_pod_group }}"
           creator: rhpds.zerotouch.zt_containers
       spec:
         replicas: 1
         selector:
           matchLabels:
-            app.kubernetes.io/name: "{{ zt_container.name }}"
+            app.kubernetes.io/name: "{{ zt_pod_group }}"
         template:
           metadata:
             labels:
-              app.kubernetes.io/name: "{{ zt_container.name }}"
+              app.kubernetes.io/name: "{{ zt_pod_group }}"
               guid: "{{ guid }}"
           spec:
-            containers:
-              - name: "{{ zt_container.name }}"
-                image: "{{ zt_container.image }}"
-                ports: "{{ zt_container.ports | default(omit) }}"
-                env: >-
-                  {{ dict(_zt_container_environment.keys() | list
-                     | zip(_zt_container_environment.values() | map('string') | list))
-                     | dict2items(key_name='name', value_name='value') }}
-                volumeMounts: "{{ zt_container.volumeMounts | default(omit) }}"
-                resources:
-                  requests:
-                    memory: "{{ zt_container.memory | default('256Mi') }}"
-                    cpu: "{{ zt_container.cpu | default('100m') }}"
-                  limits:
-                    memory: "{{ zt_container.memory | default('256Mi') }}"
-                    cpu: "{{ zt_container.cpu | default('500m') }}"
-            volumes: "{{ zt_container.volumes | default(omit) }}"
+            containers: "{{ _zt_pod_group_members | map(attribute='k8s_spec') | list }}"
+            volumes: "{{ _zt_pod_group_volumes if _zt_pod_group_volumes | length > 0 else omit }}"
   register: r_zt_containers_deploy
   retries: "{{ zt_containers_k8s_retries }}"
   delay: "{{ zt_containers_k8s_delay }}"
   until: r_zt_containers_deploy is not failed
-  loop: "{{ containers }}"
+  loop: "{{ _zt_containers | map(attribute='pod_group') | unique | list }}"
   loop_control:
-    loop_var: zt_container
-    label: "{{ zt_container.name }}"
+    loop_var: zt_pod_group
+    label: "{{ zt_pod_group }}"
 
-- name: Wait for each container's Deployment to be Available
+- name: Wait for each pod group's Deployment to be Available
   when: zt_containers_wait_ready | bool
   kubernetes.core.k8s:
     host: "{{ zt_containers_openshift_api_url }}"
@@ -71,17 +63,17 @@
     validate_certs: "{{ zt_containers_validate_certs }}"
     api_version: apps/v1
     kind: Deployment
-    name: "{{ zt_container.name }}"
+    name: "{{ zt_pod_group }}"
     namespace: "{{ zt_containers_namespace }}"
     wait: true
     wait_condition:
       type: Available
       status: "True"
     wait_timeout: "{{ zt_containers_wait_timeout }}"
-  loop: "{{ containers }}"
+  loop: "{{ _zt_containers | map(attribute='pod_group') | unique | list }}"
   loop_control:
-    loop_var: zt_container
-    label: "{{ zt_container.name }}"
+    loop_var: zt_pod_group
+    label: "{{ zt_pod_group }}"
 
 - name: Create a Service for each container entry that declares one
   kubernetes.core.k8s:
@@ -98,8 +90,12 @@
           guid: "{{ guid }}"
           creator: rhpds.zerotouch.zt_containers
       spec:
+        # Selects the shared Pod-group label, not the individual container's
+        # own name - once grouped via pod:, the Service must route to the
+        # Pod (which may hold several containers), not a per-container label
+        # that no longer exists on its own.
         selector:
-          app.kubernetes.io/name: "{{ zt_pair[0].name }}"
+          app.kubernetes.io/name: "{{ zt_pair[0].pod | default(zt_pair[0].name) }}"
         ports: "{{ zt_pair[1].ports }}"
   register: r_zt_containers_service
   retries: "{{ zt_containers_k8s_retries }}"
@@ -152,7 +148,9 @@
     kind: Pod
     namespace: "{{ zt_containers_namespace }}"
     label_selectors:
-      - "app.kubernetes.io/name={{ zt_container.name }}"
+      # Look up by the container's resolved pod-group label, not its own
+      # name, since a grouped container's Pod is labeled after the group.
+      - "app.kubernetes.io/name={{ zt_container.pod | default(zt_container.name) }}"
   register: r_zt_containers_pods
   retries: "{{ ((zt_containers_wait_timeout | int) / (zt_containers_k8s_delay | int)) | round(0, 'ceil') | int }}"
   delay: "{{ zt_containers_k8s_delay }}"

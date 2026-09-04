@@ -50,3 +50,46 @@
         that:
           - r_route.resources | length == 1
         fail_msg: "zt_containers did not create the expected Route object: {{ r_route.resources }}"
+
+    - name: 'Look up the Deployment created for the "web"/"cache" pod: paired group'
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ sandbox_openshift_namespace }}"
+        name: paired
+      register: r_paired_deploy
+
+    - name: 'Assert the pod: paired group produced one Deployment with both containers, Available'
+      ansible.builtin.assert:
+        that:
+          - r_paired_deploy.resources | length == 1
+          - (r_paired_deploy.resources[0].status.availableReplicas | default(0)) == 1
+          - r_paired_deploy.resources[0].spec.template.spec.containers | length == 2
+          - r_paired_deploy.resources[0].spec.template.spec.containers
+            | map(attribute='name') | sort | list == ['cache', 'web']
+          # Both "web" and "cache" declare the same shared-data volume - this
+          # asserts the dedup-by-name merge kept exactly one, not two.
+          - r_paired_deploy.resources[0].spec.template.spec.volumes | length == 1
+          - r_paired_deploy.resources[0].spec.template.spec.volumes[0].name == 'shared-data'
+        fail_msg: >-
+          zt_containers did not correctly group the "web"/"cache" pod: paired
+          entries into a single multi-container Deployment:
+          {{ r_paired_deploy.resources }}
+
+    - name: Look up the Service created for the "web" entry in the paired group
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        namespace: "{{ sandbox_openshift_namespace }}"
+        name: paired
+      register: r_paired_svc
+
+    - name: Assert the Service selects the shared pod-group label, not the "web" container's own name
+      ansible.builtin.assert:
+        that:
+          - r_paired_svc.resources | length == 1
+          - r_paired_svc.resources[0].spec.selector['app.kubernetes.io/name'] == 'paired'
+        fail_msg: >-
+          zt_containers' Service selector should target the pod: group label
+          (paired), not the container's own name (web):
+          {{ r_paired_svc.resources }}

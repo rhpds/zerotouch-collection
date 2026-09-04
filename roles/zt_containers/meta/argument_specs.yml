@@ -3,19 +3,20 @@ argument_specs:
   main:
     short_description: >-
       Provision the Zero Touch containers: sidecar list as one Deployment
-      per entry, with optional Service/Route exposure and one-time init
-      commands.
+      per entry (or per pod: group), with optional Service/Route exposure
+      and one-time init commands.
     description: >-
       New capability (not a port of any v1 role — see the migration
       proposal's Risk #1: `containers:` support is unfinished in v1 too).
       Reads the `containers` list (typically produced by zt_base_config from
       a lab's instances.yaml) and, for ACTION in [provision, create], creates
-      one apps/v1 Deployment per entry plus any declared v1/Service and
-      route.openshift.io/v1/Route objects. For ACTION in [destroy, remove],
-      deletes the same objects. Schema and field names for a containers[]
-      entry match Kubernetes' own PodSpec fields directly (ports,
-      volumeMounts, volumes) so no translation layer is needed, based on the
-      one confirmed-real example:
+      one apps/v1 Deployment per entry (or, for entries that share a pod:
+      value, one Deployment per group with multiple containers in its Pod
+      template) plus any declared v1/Service and route.openshift.io/v1/Route
+      objects. For ACTION in [destroy, remove], deletes the same objects.
+      Schema and field names for a containers[] entry match Kubernetes' own
+      PodSpec fields directly (ports, volumeMounts, volumes) so no
+      translation layer is needed, based on the one confirmed-real example:
       https://github.com/rhpds/zt-ans-bu-eda-netbox/blob/main/config/instances.yaml.
       Note: sandbox_openshift_apps_domain (not an option of this role — it's
       expected to already be set by the sandbox/CNV setup) is required
@@ -32,6 +33,21 @@ argument_specs:
             type: str
             required: true
             description: Container/Deployment/Pod-label name.
+          pod:
+            type: str
+            description: >-
+              Optional pod-group name. Entries sharing the same pod: value
+              are bundled into one Deployment/Pod together (one containers:
+              entry per member), sharing the Pod's network namespace
+              (reachable over localhost, no Service needed) and any
+              declared volumes: (define the shared volume once on any one
+              member, then reference it from each member's volumeMounts:
+              by name). When unset, defaults to this entry's own name -
+              i.e. a group of one, identical to giving every container its
+              own Deployment (today's behavior). Containers bundled into
+              the same pod must each listen on a distinct port - the OS
+              will refuse a second bind to the same port since they share
+              one network namespace, and this is not validated by the role.
           image:
             type: str
             required: true

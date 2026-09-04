@@ -52,7 +52,9 @@
     api_version: apps/v1
     kind: Deployment
     namespace: "{{ zt_containers_namespace }}"
-    name: "{{ zt_container.name }}"
+    # One Deployment per pod-group (not per containers[] entry) - a group
+    # with several members must only be deleted once, by its group name.
+    name: "{{ zt_pod_group }}"
   register: r_zt_containers_deploy_remove
   retries: "{{ zt_containers_k8s_retries }}"
   delay: "{{ zt_containers_k8s_delay }}"
@@ -60,7 +62,7 @@
   failed_when: >-
     r_zt_containers_deploy_remove is failed and
     'NotFound' not in (r_zt_containers_deploy_remove.msg | default(''))
-  loop: "{{ containers }}"
+  loop: "{{ _zt_containers | map(attribute='pod_group') | unique | list }}"
   loop_control:
-    loop_var: zt_container
-    label: "{{ zt_container.name }}"
+    loop_var: zt_pod_group
+    label: "{{ zt_pod_group }}"

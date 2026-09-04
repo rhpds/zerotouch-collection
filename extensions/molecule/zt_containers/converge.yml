@@ -44,6 +44,48 @@
             targetPort: 80
             tls: true
             tls_termination: edge
+      # Two entries sharing pod: paired - regression-tests the pod: grouping
+      # feature alongside the untouched standalone `demo` entry above.
+      # Both declare the same shared-data emptyDir volume (exercising the
+      # dedup-by-name merge - if that logic were wrong, the Pod would get
+      # two volumes with the same name and the k8s API would reject it
+      # outright), and use different container ports (80 vs 6379) since
+      # both containers share one network namespace once grouped.
+      - name: web
+        pod: paired
+        image: docker.io/library/nginx:1.27-alpine
+        ports:
+          - name: http
+            containerPort: 80
+            protocol: TCP
+        volumeMounts:
+          - name: shared-data
+            mountPath: /usr/share/nginx/html
+        volumes:
+          - name: shared-data
+            emptyDir: {}
+        memory: 128Mi
+        services:
+          - name: paired
+            ports:
+              - port: 80
+                protocol: TCP
+                targetPort: 80
+                name: http
+      - name: cache
+        pod: paired
+        image: docker.io/library/redis:7-alpine
+        ports:
+          - name: redis
+            containerPort: 6379
+            protocol: TCP
+        volumeMounts:
+          - name: shared-data
+            mountPath: /data
+        volumes:
+          - name: shared-data
+            emptyDir: {}
+        memory: 128Mi
   environment:
     K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"
   tasks:
