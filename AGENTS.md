@@ -44,6 +44,7 @@ extensions/molecule/<role>/         Per-role Molecule scenario: molecule.yml, cr
 tests/static/                       yamllint + ansible-lint tox environment (tox.ini, collections-requirements.yml)
 .ansible-lint / .yamllint           Lint config (ansible-lint: production profile; excludes tests/testing/molecule)
 .github/workflows/static-checks.yml CI: yamllint + ansible-lint on push (main, v* tags) and PRs to main
+.github/workflows/molecule.yml      CI: molecule test -s <scenario> (matrix, all 3 roles) on push (main, v* tags) and PRs to main
 ```
 
 ## Architecture
@@ -65,12 +66,14 @@ tests/static/                       yamllint + ansible-lint tox environment (tox
 
 - `tests/static/tox.ini` runs two envs against the whole repo (`changedir = ../..`): `yamllint` (extends `default`, 200-char lines, relaxed comment spacing — see `.yamllint`) and `ansible-lint` (`production` profile, `kubernetes.core` installed first via `collections-requirements.yml`; excludes `tests/`, `testing/`, `extensions/molecule/`; skips `var-naming[no-role-prefix]` and `galaxy[no-changelog]` — see `.ansible-lint`).
 - Each role has its own Molecule scenario under `extensions/molecule/<role>/`. `zt_base_config`'s needs no live cluster; `zt_security_lockdown` and `zt_containers` need the `kind` CLI (the latter also applies a manual Route CRD via `files/route-crd.yaml` since `kind` doesn't have OpenShift's Route API — full Route reconciliation can only be exercised on a real OpenShift/CNV cluster).
-- **CI only runs static checks** (see below) — Molecule is not wired into CI. Run the relevant `molecule test -s <role>` locally before merging any change to role task logic.
+- **CI runs both static checks and Molecule** (see below) — `kind`/Docker ship preinstalled on `ubuntu-latest` runners, so no extra setup step was needed to wire the `kind`-dependent scenarios in. You can still run `molecule test -s <role>` locally for faster iteration.
 - New/changed variables need a matching update to that role's `meta/argument_specs.yml` (and Molecule fixtures if the change affects `converge.yml`/`verify.yml`).
 
 ## CI/CD
 
-`.github/workflows/static-checks.yml`: one job (`static-checks`, Python 3.12) running `pip install tox && tox -c tests/static` on push to `main`, push of `v*` tags, and PRs targeting `main`. There is no separate build/publish job yet (no Galaxy publish automation).
+- `.github/workflows/static-checks.yml`: one job (`static-checks`, Python 3.12) running `pip install tox && tox -c tests/static` on push to `main`, push of `v*` tags, and PRs targeting `main`.
+- `.github/workflows/molecule.yml`: matrix job (`zt_base_config`, `zt_containers`, `zt_security_lockdown`) running `molecule test -s <scenario>` on the same triggers.
+- There is no separate build/publish job yet (no Galaxy publish automation).
 
 ## Boundaries
 
@@ -87,15 +90,15 @@ tests/static/                       yamllint + ansible-lint tox environment (tox
 **Ask first:**
 - Adding a new Ansible Galaxy dependency to `galaxy.yml`.
 - Renaming or removing a role's public (`{role_name}_*`) variables — existing AgnosticV catalog items depend on the current names.
-- Wiring Molecule into CI (currently deliberate — some scenarios need `kind`, which isn't set up in `static-checks.yml`).
 
 ## Known Gotchas
 
 - Showroom deployment is `agnosticd.showroom.zerotouch_showroom`, **not** `agnosticd.showroom.ocp4_workload_showroom` — the latter was the original Phase 3 plan but was superseded after hitting an RBAC gap on shared CNV sandbox namespaces. Don't reintroduce `ocp4_workload_showroom` references for showroom deployment.
 - `zt_base_config`'s `cacheable: true` is only load-bearing for its own Molecule scenario (two separate `ansible-playbook` processes), not the real deploy path (one process via `import_playbook`). Don't read the Molecule setup as evidence for why `cacheable: true` matters in production.
-- `zt_containers`' `commands:` (one-time exec) task path is implemented and lint-clean but could not be live-tested in this collection's `kind`-on-nested-Podman dev sandbox (`kubernetes.core.k8s_exec` fails there even though `kubectl exec` fails identically outside Ansible — an environment limitation, not a role bug). Treat it as needing a real-cluster smoke test.
-- `zt_security_lockdown`'s default egress rules have no explicit rule for the OpenShift API server (443/6443) — ported verbatim from v1, presumed fine in production but worth validating for labs with new in-namespace-to-API-server traffic.
+- `zt_containers`' `commands:` (one-time exec) task path was fixed and live-tested against a real cluster (GPTEINFRA-17763): `kubernetes.core.k8s_exec`'s `command` option is `type: str`, not a list — pass a single string built with the `quote` filter, not a `["/bin/sh", "-c", ...]` list, or quoted shell commands break. It still can't be exercised end-to-end in this collection's own `kind`-on-nested-Podman Molecule sandbox (`k8s_exec` fails there independent of the role — confirmed `kubectl exec` fails identically outside Ansible).
+- `zt_security_lockdown`'s default egress rules have no explicit rule for the OpenShift API server (443/6443), ported verbatim from v1. Confirmed real via live testing (a raw `nc`/authenticated `curl` to the in-cluster API times out), but confirmed non-blocking in practice — `zerotouch-automation`'s `core/user_data.py` treats the in-cluster K8s API as a non-fatal fallback. Add a rule via `zero_touch_egress_lockdown_rules` if a lab actually depends on that fallback path.
 - `route.openshift.io/v1` `Route` objects only exist on OpenShift, so `zt_containers`' Route creation can only be fully exercised on a real OpenShift/CNV cluster (or `kind` + a manually-applied Route CRD for structural validation only).
+- `zt_base_config_ensure_bastion_group` defaults `false`, not `true` — an earlier revision defaulted `true` and silently broke real Ansible BU labs (`zt-ans-bu-eda-netbox`, `zt-ans-bu-windows-ad`) where every VM is deliberately `isolated`-only by design. When the fixup does run, it drops `isolated` entirely rather than just adding `bastions` alongside it — keeping both tags left the VM excluded from v2 core's Linux connection-setup step and SSH unresolvable. See `zt_base_config`'s README for the full live-testing writeup.
 
 ## Git Workflow
 
