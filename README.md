@@ -9,8 +9,12 @@ duplicated — see "What's deliberately not in this collection" below.
 
 - **Namespace:** `rhpds`
 - **Name:** `zerotouch`
-- **Scope:** RHEL BU only for now (see the proposal's Cross-Business-Unit
-  Considerations for HP BU / Ansible BU follow-on work)
+- **Scope:** all three ZT business units — RHEL BU, HP BU, Ansible BU. This
+  collection's roles are BU-agnostic; per-BU rollout status (which BUs have
+  a real `-v2` AgnosticV base component in progress/review vs. not started)
+  is tracked in
+  [`STATUS-SUMMARY.md`](/home/andrew/src/proposals/zt-to-agd-v2/STATUS-SUMMARY.md),
+  not fixed here.
 
 ## Roles
 
@@ -18,7 +22,7 @@ duplicated — see "What's deliberately not in this collection" below.
 |------|---------|
 | `rhpds.zerotouch.zt_base_config` | Dynamic per-lab config loader — fetches firewall/instances/networks config from a lab's content git repo. See [role README](roles/zt_base_config/README.md). |
 | `rhpds.zerotouch.zt_security_lockdown` | Applies the CNV NetworkPolicy that locks a ZT sandbox namespace down to only the traffic it needs. See [role README](roles/zt_security_lockdown/README.md). |
-| `rhpds.zerotouch.zt_containers` | Provisions the `containers:` sidecar list (Deployment + optional Service/Route per entry) — new capability, not a v1 port. See [role README](roles/zt_containers/README.md). |
+| `rhpds.zerotouch.zt_containers` | Provisions the `containers:` sidecar list (Deployment + optional Service/Route per entry, with optional `pod:` grouping for multi-container Pods) — new capability, not a v1 port. See [role README](roles/zt_containers/README.md). |
 
 (Rendered as a table here for a quick scan — see each role's own README for
 full detail, since GitHub renders Markdown tables fine even though our
@@ -94,19 +98,29 @@ Run `molecule` commands from the collection root (where `galaxy.yml` lives)
 
 ## What's out of scope for this collection (deferred to a follow-up plan)
 
-Per the migration proposal, this collection only covers **Phase 1**. Phases
-2, 4, and 5 all require a live OCP/CNV test cluster to validate properly and
-are tracked separately:
+This collection is only Phase 1-3 of the wider migration — the roles
+themselves, validated against `cloud-vms-base` + `openshift_cnv`, plus the
+showroom integration. Bridging each BU's remaining gaps and actually rolling
+each BU's labs onto the new `-v2` AgnosticV base components happens in other
+repos and is tracked separately. Live status (which changes independently of
+this README) lives in
+[`STATUS-SUMMARY.md`](/home/andrew/src/proposals/zt-to-agd-v2/STATUS-SUMMARY.md) —
+as of that doc's last update:
 
-- **Phase 2:** confirm `cloud-vms-base` + `openshift_cnv` provisions from the
-  facts `zt_base_config` publishes (see catalog wiring above). The test
-  catalog `rhpds/agnosticv` `tests/zt-agd-v2-demo` is the live fixture.
-- **Phase 3 — done:** validated against `cloud-vms-base` + `openshift_cnv` in
-  the `zt-agd-v2-demo` test catalog. The outcome was the new
-  `agnosticd.showroom.zerotouch_showroom` role, not
+- **Phases 1-3 — Collection + `cloud-vms-base` validation + Showroom
+  integration — Done.** The `cloud-vms-base` validation used the
+  `rhpds/agnosticv` `tests/zt-agd-v2-demo` test catalog. The showroom outcome
+  was the new `agnosticd.showroom.zerotouch_showroom` role, not
   `agnosticd.showroom.ocp4_workload_showroom` as originally planned — see
   "What's deliberately NOT in this collection" above.
-- **Phase 4:** write the new `zt-rhelbu/zt-rhel-bu-lab-developer-cnv-v2`
-  AgnosticV base component that actually wires this collection's roles
-  together with `cloud_vm_workloads`, `showroom`, and `rhpds.litellm_virtual_keys`.
-- **Phase 5:** end-to-end testing and incremental lab migration.
+- **Phase 4 — Bridge HP BU gaps — Done.**
+- **Phase 5 — Bridge Ansible BU gaps — In review** (found that v2 core
+  treats the `isolated` AnsibleGroup tag as a reserved exclusion group; fixed
+  in this collection's `zt_base_config` bastion-group fixup, see that role's
+  README).
+- **Phase 6 — RHEL BU rollout — Not started.** No dependency on Phases 4/5;
+  can proceed any time. Target repo `zt-rhelbu-agnosticv`.
+- **Phase 7 — HP BU rollout — In review.** Real `-v2` base component +
+  pilot lab in `zt-hpbu-agnosticv`.
+- **Phase 8 — Ansible BU rollout — In review.** Real `-v2` base component +
+  pilot lab in `zt-ansiblebu-agnosticv`.

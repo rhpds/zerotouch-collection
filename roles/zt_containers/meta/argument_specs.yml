@@ -3,19 +3,20 @@ argument_specs:
   main:
     short_description: >-
       Provision the Zero Touch containers: sidecar list as one Deployment
-      per entry, with optional Service/Route exposure and one-time init
-      commands.
+      per entry (or per pod: group), with optional Service/Route exposure
+      and one-time init commands.
     description: >-
       New capability (not a port of any v1 role — see the migration
       proposal's Risk #1: `containers:` support is unfinished in v1 too).
       Reads the `containers` list (typically produced by zt_base_config from
       a lab's instances.yaml) and, for ACTION in [provision, create], creates
-      one apps/v1 Deployment per entry plus any declared v1/Service and
-      route.openshift.io/v1/Route objects. For ACTION in [destroy, remove],
-      deletes the same objects. Schema and field names for a containers[]
-      entry match Kubernetes' own PodSpec fields directly (ports,
-      volumeMounts, volumes) so no translation layer is needed, based on the
-      one confirmed-real example:
+      one apps/v1 Deployment per entry (or, for entries that share a pod:
+      value, one Deployment per group with multiple containers in its Pod
+      template) plus any declared v1/Service and route.openshift.io/v1/Route
+      objects. For ACTION in [destroy, remove], deletes the same objects.
+      Schema and field names for a containers[] entry match Kubernetes' own
+      PodSpec fields directly (ports, volumeMounts, volumes) so no
+      translation layer is needed, based on the one confirmed-real example:
       https://github.com/rhpds/zt-ans-bu-eda-netbox/blob/main/config/instances.yaml.
       Note: sandbox_openshift_apps_domain (not an option of this role — it's
       expected to already be set by the sandbox/CNV setup) is required
@@ -32,6 +33,21 @@ argument_specs:
             type: str
             required: true
             description: Container/Deployment/Pod-label name.
+          pod:
+            type: str
+            description: >-
+              Optional pod-group name. Entries sharing the same pod: value
+              are bundled into one Deployment/Pod together (one containers:
+              entry per member), sharing the Pod's network namespace
+              (reachable over localhost, no Service needed) and any
+              declared volumes: (define the shared volume once on any one
+              member, then reference it from each member's volumeMounts:
+              by name). When unset, defaults to this entry's own name -
+              i.e. a group of one, identical to giving every container its
+              own Deployment (today's behavior). Containers bundled into
+              the same pod must each listen on a distinct port - the OS
+              will refuse a second bind to the same port since they share
+              one network namespace, and this is not validated by the role.
           image:
             type: str
             required: true
@@ -46,7 +62,9 @@ argument_specs:
             type: dict
             description: >-
               Environment variables as a flat key/value dict, converted to
-              the Kubernetes env: list internally.
+              the Kubernetes env: list internally. Values are coerced to
+              strings (Kubernetes' EnvVar.value is a string field), so e.g.
+              a YAML boolean or integer value is sent as its string form.
           volumeMounts:
             type: list
             elements: dict
@@ -68,8 +86,10 @@ argument_specs:
           cpu:
             type: str
             description: >-
-              CPU request (100m default) and limit (500m default) for the
-              container.
+              CPU value for the container. When unset, defaults to a
+              Burstable QoS shape (100m request / 500m limit). When set,
+              the same value is used as both request and limit (Guaranteed
+              QoS) - request and limit are not independently configurable.
           services:
             type: list
             elements: dict
@@ -158,6 +178,21 @@ argument_specs:
         type: int
         default: 300
         description: Seconds to wait for each Deployment to become Available.
+      zt_containers_k8s_retries:
+        type: int
+        default: 10
+        description: >-
+          Retries for each Kubernetes API call that creates or deletes a
+          Deployment/Service/Route, to tolerate transient network/API
+          failures.
+      zt_containers_k8s_delay:
+        type: int
+        default: 5
+        description: >-
+          Delay in seconds between zt_containers_k8s_retries attempts. Also
+          used as the polling interval when waiting for a container's pod to
+          become Running before running its init commands (the number of
+          polls is derived from zt_containers_wait_timeout).
       zt_containers_command_retries:
         type: int
         default: 10

@@ -10,8 +10,10 @@ For each entry in the `containers` list (typically produced by
 [`zt_base_config`](../zt_base_config/README.md) from a lab's
 `instances.yaml`), when `ACTION` is `provision` or `create`:
 
-1. Creates an `apps/v1` `Deployment` (1 replica) named after the container,
-   in `zt_containers_namespace`.
+1. Creates an `apps/v1` `Deployment` (1 replica) per entry, named after the
+   container, in `zt_containers_namespace` — or, for entries that share a
+   `pod:` value, one Deployment per group, with all of that group's
+   containers in the same Pod template. See "Multi-container Pods" below.
 2. Waits for the Deployment to become `Available` (unless
    `zt_containers_wait_ready` is `false`).
 3. Creates a `v1` `Service` for each entry in the container's `services:`
@@ -75,6 +77,74 @@ containers:
 See [`meta/argument_specs.yml`](meta/argument_specs.yml) for the full option
 reference.
 
+## Containers talking to each other
+
+Two containers[] entries can already reach each other today without any
+special configuration, in either of two ways — pick whichever matches what
+the lab actually needs:
+
+- **Separate Deployments, over the Service network (the default).** Every
+  container lands in the same namespace regardless of grouping, and
+  [`zt_security_lockdown`](../zt_security_lockdown/README.md)'s default
+  `NetworkPolicy` already allows namespace-wide traffic (not just external)
+  on ports `80`/`443`/`8080`/`7171`/`8081`/`9000`. So if container `a`
+  declares a `services:` entry, container `b` can already reach it at
+  `a.<namespace>.svc` (or just `a`) on one of those ports with zero schema
+  changes. Need a different port open cluster-wide? Add it via
+  `zero_touch_ingress_lockdown_rules`/`zero_touch_egress_lockdown_rules`
+  (from the lab's `firewall.yaml`, consumed by `zt_base_config`) — not a
+  `zt_containers` change.
+- **Same Pod, via `pod:` grouping (below).** Use this when containers need
+  `localhost`-speed/no-Service communication, or need to share files through
+  a common `volumes:` entry — the standard Kubernetes sidecar pattern, not
+  just "a port being open".
+
+## Multi-container Pods (`pod:` grouping)
+
+Give two or more `containers[]` entries the same `pod:` value to bundle them
+into one Deployment/Pod together, instead of one Deployment each:
+
+```yaml
+containers:
+  - name: app
+    pod: app-with-cache          # group name - any string
+    image: quay.io/example/app:latest
+    ports:
+      - name: http
+        containerPort: 8080
+        protocol: TCP
+    volumeMounts:
+      - name: cache
+        mountPath: /var/cache/app
+    services:
+      - name: app
+        ports:
+          - port: 8080
+            targetPort: 8080
+            protocol: TCP
+            name: http
+  - name: cache-warmer
+    pod: app-with-cache          # same group as "app" above
+    image: quay.io/example/cache-warmer:latest
+    volumeMounts:
+      - name: cache
+        mountPath: /var/cache/app
+    volumes:                     # declared once, on either member - deduped by name
+      - name: cache
+        emptyDir: {}
+```
+
+Both `app` and `cache-warmer` end up as two `containers:` entries inside a
+single Pod named `app-with-cache`: they share that Pod's network namespace
+(so `cache-warmer` can reach `app` at `localhost:8080`, no Service needed
+between them) and the `cache` `emptyDir` volume declared once above.
+`services:`/`routes:`/`commands:`/`memory`/`cpu`/`environment` stay exactly
+as they are today — per-entry, not per-group.
+
+Entries that don't set `pod:` default to their own `name` as the group key,
+which is a group of one — identical to today's one-container-per-Deployment
+behavior. Existing `containers:` lists need no changes.
+
 ## Known limitations
 
 - `route.openshift.io/v1` `Route` objects only exist on OpenShift, so this
@@ -102,6 +172,15 @@ reference.
   container-nesting depth, not the role), so this Molecule scenario's
   `commands:` step still can't be exercised end-to-end in CI even after the
   fix above — only the real live-cluster order caught and confirmed it.
+- Containers bundled into the same `pod:` group share one network
+  namespace, so they must each listen on a distinct port — a second
+  container binding the same port fails with a real OS-level `EADDRINUSE`,
+  which the Kubernetes API (and this role) has no way to catch ahead of
+  time. This only applies within a group; containers in different groups
+  never share a network namespace, so port reuse across groups is fine.
+- Setting `pod:` on an entry to another entry's bare `name:` intentionally
+  joins that entry's group (there's just one Deployment either way) — this
+  is not treated as a naming collision, and the role does not warn about it.
 
 ## Example
 
