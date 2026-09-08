@@ -9,13 +9,13 @@
     kind: Route
     namespace: "{{ zt_containers_namespace }}"
     name: "{{ zt_pair[1].name }}"
-  register: r_zt_container_route_remove
-  retries: 10
-  delay: 5
-  until: r_zt_container_route_remove is not failed
+  register: r_zt_containers_route_remove
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
+  until: r_zt_containers_route_remove is not failed
   failed_when: >-
-    r_zt_container_route_remove is failed and
-    'NotFound' not in (r_zt_container_route_remove.msg | default(''))
+    r_zt_containers_route_remove is failed and
+    'NotFound' not in (r_zt_containers_route_remove.msg | default(''))
   loop: "{{ containers | subelements('routes', skip_missing=True) }}"
   loop_control:
     loop_var: zt_pair
@@ -31,13 +31,13 @@
     kind: Service
     namespace: "{{ zt_containers_namespace }}"
     name: "{{ zt_pair[1].name }}"
-  register: r_zt_container_service_remove
-  retries: 10
-  delay: 5
-  until: r_zt_container_service_remove is not failed
+  register: r_zt_containers_service_remove
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
+  until: r_zt_containers_service_remove is not failed
   failed_when: >-
-    r_zt_container_service_remove is failed and
-    'NotFound' not in (r_zt_container_service_remove.msg | default(''))
+    r_zt_containers_service_remove is failed and
+    'NotFound' not in (r_zt_containers_service_remove.msg | default(''))
   loop: "{{ containers | subelements('services', skip_missing=True) }}"
   loop_control:
     loop_var: zt_pair
@@ -53,13 +53,13 @@
     kind: Deployment
     namespace: "{{ zt_containers_namespace }}"
     name: "{{ zt_container.name }}"
-  register: r_zt_container_deploy_remove
-  retries: 10
-  delay: 5
-  until: r_zt_container_deploy_remove is not failed
+  register: r_zt_containers_deploy_remove
+  retries: "{{ zt_containers_k8s_retries }}"
+  delay: "{{ zt_containers_k8s_delay }}"
+  until: r_zt_containers_deploy_remove is not failed
   failed_when: >-
-    r_zt_container_deploy_remove is failed and
-    'NotFound' not in (r_zt_container_deploy_remove.msg | default(''))
+    r_zt_containers_deploy_remove is failed and
+    'NotFound' not in (r_zt_containers_deploy_remove.msg | default(''))
   loop: "{{ containers }}"
   loop_control:
     loop_var: zt_container

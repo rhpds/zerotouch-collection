@@ -7,5 +7,7 @@ zt_containers_openshift_api_key: "{{ sandbox_openshift_api_key | default(omit) }
 zt_containers_validate_certs: false
 zt_containers_wait_ready: true
 zt_containers_wait_timeout: 300
+zt_containers_k8s_retries: 10
+zt_containers_k8s_delay: 5
 zt_containers_command_retries: 10
 zt_containers_command_delay: 5

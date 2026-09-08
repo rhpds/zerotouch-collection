@@ -46,7 +46,9 @@ argument_specs:
             type: dict
             description: >-
               Environment variables as a flat key/value dict, converted to
-              the Kubernetes env: list internally.
+              the Kubernetes env: list internally. Values are coerced to
+              strings (Kubernetes' EnvVar.value is a string field), so e.g.
+              a YAML boolean or integer value is sent as its string form.
           volumeMounts:
             type: list
             elements: dict
@@ -68,8 +70,10 @@ argument_specs:
           cpu:
             type: str
             description: >-
-              CPU request (100m default) and limit (500m default) for the
-              container.
+              CPU value for the container. When unset, defaults to a
+              Burstable QoS shape (100m request / 500m limit). When set,
+              the same value is used as both request and limit (Guaranteed
+              QoS) - request and limit are not independently configurable.
           services:
             type: list
             elements: dict
@@ -158,6 +162,21 @@ argument_specs:
         type: int
         default: 300
         description: Seconds to wait for each Deployment to become Available.
+      zt_containers_k8s_retries:
+        type: int
+        default: 10
+        description: >-
+          Retries for each Kubernetes API call that creates or deletes a
+          Deployment/Service/Route, to tolerate transient network/API
+          failures.
+      zt_containers_k8s_delay:
+        type: int
+        default: 5
+        description: >-
+          Delay in seconds between zt_containers_k8s_retries attempts. Also
+          used as the polling interval when waiting for a container's pod to
+          become Running before running its init commands (the number of
+          polls is derived from zt_containers_wait_timeout).
       zt_containers_command_retries:
         type: int
         default: 10

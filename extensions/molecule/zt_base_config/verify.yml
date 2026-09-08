@@ -17,11 +17,11 @@
         _expected: https://raw.githubusercontent.com/rhpds/zt-ans-bu-eda-netbox/main/config/
       ansible.builtin.assert:
         that:
-          - zt_base_config_git_config_directory | default('') == _expected
+          - _zt_base_config_git_config_directory | default('') == _expected
         fail_msg: >-
-          Expected cached fact zt_base_config_git_config_directory to equal
+          Expected cached fact _zt_base_config_git_config_directory to equal
           {{ _expected }}, got
-          {{ zt_base_config_git_config_directory | default('UNDEFINED') }} —
+          {{ _zt_base_config_git_config_directory | default('UNDEFINED') }} —
           check that fact_caching persisted across the converge/verify boundary.
 
     - name: Assert the gitea sidecar was parsed out of containers

@@ -10,6 +10,7 @@
     quiet: true
 
 - name: Apply NetworkPolicy to lock down the sandbox namespace
+  when: ACTION in ['provision', 'create']
   kubernetes.core.k8s:
     host: "{{ zt_security_lockdown_openshift_api_url }}"
     api_key: "{{ zt_security_lockdown_openshift_api_key }}"

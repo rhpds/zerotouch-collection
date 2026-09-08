@@ -5,6 +5,7 @@
   gather_facts: false
   vars:
     guid: molecule
+    ACTION: provision
     sandbox_openshift_namespace: zt-lockdown-test
   environment:
     K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"

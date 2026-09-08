@@ -1,4 +1,18 @@
 ---
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - guid | default('') | length > 0
+      - zt_containers_namespace | default('') | length > 0
+      - >-
+        (containers | selectattr('routes', 'defined') | list | length == 0)
+        or (sandbox_openshift_apps_domain | default('') | length > 0)
+    fail_msg: >-
+      zt_containers requires guid and zt_containers_namespace
+      (sandbox_openshift_namespace) to be set, and sandbox_openshift_apps_domain
+      to be set when any container declares routes.
+    quiet: true
+
 - name: Running zt_containers provision tasks
   when: ACTION in ['provision', 'create']
   ansible.builtin.include_tasks: workload.yml
