@@ -193,9 +193,11 @@ argument_specs:
           Route via the Route API's response header actions, so its page
           can be embedded in a showroom UI iframe tab even if the
           container's own app sends X-Frame-Options: sameorigin/deny (e.g.
-          Gitea). Only applied to routes with tls: true and
-          tls_termination other than passthrough - header actions require
-          the OpenShift Router to terminate TLS itself, matching the same
-          restriction and convention already used by VM instances[].routes
+          Gitea). Applied to any route that is not tls: true with
+          tls_termination: passthrough (i.e. routes with no TLS at all, or
+          with edge/reencrypt termination, all qualify) - header actions
+          require the OpenShift Router to terminate TLS itself, which only
+          passthrough termination prevents. Matches the same restriction
+          and convention already used by VM instances[].routes
           (agnosticd.cloud_provider_openshift_cnv.resources'
           openshift_cnv_route_remove_x_frame_options_header).
