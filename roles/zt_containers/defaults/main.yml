@@ -11,3 +11,4 @@ zt_containers_k8s_retries: 10
 zt_containers_k8s_delay: 5
 zt_containers_command_retries: 10
 zt_containers_command_delay: 5
+zt_containers_remove_x_frame_options_header: false

@@ -8,6 +8,7 @@
     ACTION: provision
     sandbox_openshift_namespace: zt-containers-test
     sandbox_openshift_apps_domain: apps.molecule.test
+    zt_containers_remove_x_frame_options_header: true
     # NOTE: this fixture deliberately does NOT set `commands:`. The
     # kubernetes.core.k8s_exec-based init-commands code path
     # (tasks/workload.yml's last two tasks) could not be exercised in this
@@ -37,6 +38,10 @@
                 protocol: TCP
                 targetPort: 80
                 name: http
+        # Three routes exercise all three zt_containers_remove_x_frame_options_header
+        # gating outcomes (see verify.yml): edge-TLS and no-TLS should both get
+        # httpHeaders applied; passthrough-TLS should not (the Router can't
+        # rewrite response headers on a route it doesn't terminate TLS for).
         routes:
           - name: demo
             host: demo
@@ -44,6 +49,16 @@
             targetPort: 80
             tls: true
             tls_termination: edge
+          - name: demo-http
+            host: demo-http
+            service: demo
+            targetPort: 80
+          - name: demo-passthrough
+            host: demo-passthrough
+            service: demo
+            targetPort: 80
+            tls: true
+            tls_termination: passthrough
   environment:
     K8S_AUTH_KUBECONFIG: "{{ molecule_ephemeral_directory }}/kubeconfig"
   tasks:

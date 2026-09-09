@@ -134,6 +134,12 @@
         tls: >-
           {{ {'termination': zt_pair[1].tls_termination | default('edge')}
              if zt_pair[1].tls | default(false) else omit }}
+        httpHeaders: >-
+          {{ (zt_containers_remove_x_frame_options_header
+          and not (zt_pair[1].tls | default(false)
+          and zt_pair[1].tls_termination | default('edge') == 'passthrough'))
+          | ternary({'actions': {'response': [{'name': 'X-Frame-Options',
+          'action': {'type': 'Delete'}}]}}, omit) }}
   register: r_zt_containers_route
   retries: "{{ zt_containers_k8s_retries }}"
   delay: "{{ zt_containers_k8s_delay }}"
