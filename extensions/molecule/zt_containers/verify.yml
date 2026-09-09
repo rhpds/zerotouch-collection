@@ -37,16 +37,60 @@
           - r_svc.resources | length == 1
         fail_msg: "zt_containers did not create the expected Service: {{ r_svc.resources }}"
 
-    - name: Look up the Route that should have been created (structural only — kind has no real router)
+    - name: Look up the Routes that should have been created (structural only — kind has no real router)
       kubernetes.core.k8s_info:
         api_version: route.openshift.io/v1
         kind: Route
         namespace: "{{ sandbox_openshift_namespace }}"
-        name: demo
-      register: r_route
+        name: "{{ zt_route_name }}"
+      register: r_routes
+      loop:
+        - demo
+        - demo-http
+        - demo-passthrough
+      loop_control:
+        loop_var: zt_route_name
 
-    - name: Assert the Route object was accepted by the API server
+    - name: Assert all three Route objects were accepted by the API server
       ansible.builtin.assert:
         that:
-          - r_route.resources | length == 1
-        fail_msg: "zt_containers did not create the expected Route object: {{ r_route.resources }}"
+          - r_routes.results | map(attribute='resources') | map('length') | list == [1, 1, 1]
+        fail_msg: "zt_containers did not create the expected Route objects: {{ r_routes.results }}"
+
+    # zt_containers_remove_x_frame_options_header is true in converge.yml.
+    # edge-TLS (demo) and no-TLS (demo-http) routes are terminated by the
+    # Router itself, so both should get the X-Frame-Options-strip
+    # httpHeaders action; passthrough-TLS (demo-passthrough) is terminated
+    # by the backend, so the Router can't rewrite its response headers and
+    # httpHeaders must be omitted (regression test for the bug where this
+    # was previously, incorrectly, also gated on tls: true).
+    - name: Assert the edge-TLS route strips X-Frame-Options via httpHeaders
+      ansible.builtin.assert:
+        that:
+          - (r_routes.results | selectattr('zt_route_name', 'equalto', 'demo') | first)
+            .resources[0].spec.httpHeaders.actions.response
+            | selectattr('name', 'equalto', 'X-Frame-Options')
+            | map(attribute='action.type') | list == ['Delete']
+        fail_msg: >-
+          zt_containers did not strip X-Frame-Options on the edge-TLS route:
+          {{ r_routes.results | selectattr('zt_route_name', 'equalto', 'demo') | first }}
+
+    - name: Assert the non-TLS route also strips X-Frame-Options via httpHeaders
+      ansible.builtin.assert:
+        that:
+          - (r_routes.results | selectattr('zt_route_name', 'equalto', 'demo-http') | first)
+            .resources[0].spec.httpHeaders.actions.response
+            | selectattr('name', 'equalto', 'X-Frame-Options')
+            | map(attribute='action.type') | list == ['Delete']
+        fail_msg: >-
+          zt_containers did not strip X-Frame-Options on the non-TLS route:
+          {{ r_routes.results | selectattr('zt_route_name', 'equalto', 'demo-http') | first }}
+
+    - name: Assert the passthrough-TLS route does NOT get httpHeaders (Router can't rewrite headers it doesn't terminate)
+      ansible.builtin.assert:
+        that:
+          - (r_routes.results | selectattr('zt_route_name', 'equalto', 'demo-passthrough') | first)
+            .resources[0].spec.httpHeaders is not defined
+        fail_msg: >-
+          zt_containers incorrectly applied httpHeaders to a passthrough-TLS route:
+          {{ r_routes.results | selectattr('zt_route_name', 'equalto', 'demo-passthrough') | first }}
