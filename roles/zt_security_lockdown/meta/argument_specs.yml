@@ -94,11 +94,21 @@ argument_specs:
                 port: 8081
               - protocol: TCP
                 port: 9000
+          - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 6443
+            to:
+              - ipBlock:
+                  cidr: 172.30.0.1/32
         description: >-
           Baseline egress rules always applied, ported verbatim from v1's
-          default_vars_openshift_cnv.yaml. Note: this list has no explicit
-          rule allowing egress to the OpenShift API server (typically
-          443/6443) — see the role README for details.
+          default_vars_openshift_cnv.yaml, plus one added rule (GPTEINFRA-18137):
+          a rule scoped to the kubernetes.default Service's ClusterIP
+          (172.30.0.1/32) allowing egress to the in-cluster Kubernetes API on
+          ports 443 (Service ClusterIP) and 6443 (the DNATed backend
+          apiserver port) — see the role README for details.
       zero_touch_ingress_lockdown_rules:
         type: list
         elements: dict
