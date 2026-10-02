@@ -19,28 +19,29 @@ and its default rule sets in `default_vars_openshift_cnv.yaml` — the rule
 sets in [`defaults/main.yml`](defaults/main.yml) are copied verbatim from v1,
 not reinvented.
 
-## Known gap — no explicit rule for the OpenShift API server (validated live, non-blocking)
+## In-cluster K8s API egress (GPTEINFRA-18137)
 
 The default egress allow-list (`zt_security_lockdown_default_egress_rules`)
-does not include an explicit rule allowing egress to the OpenShift API server
-(typically port 443 or 6443). Confirmed **real** via live testing against a
-provisioned CNV sandbox (`sandbox-nlkj2-ocp4-cluster`): both a raw `nc` to the
-internal API service IP and an authenticated `curl` from inside the namespace
-(using the pod's own mounted ServiceAccount token) timed out. This blocks
-every pod in the namespace, including the bastion VM's `virt-launcher` pod,
-not just the showroom pod.
+includes a rule allowing egress to the in-cluster Kubernetes API, scoped to
+the Service CIDR (`172.30.0.0/16`) on ports 443 and 6443: 443 is the API
+Service's ClusterIP port, and 6443 is the port OVN-Kubernetes DNATs that
+traffic to on the backend apiserver running on a control-plane node. A rule
+that only allows port 443 to the ClusterIP — or even "port 443 to
+anywhere" — does **not** cover this, since ACL evaluation happens against
+the DNATed destination port.
 
-**Confirmed non-blocking in practice**, though: a real runtime-automation job
-completed successfully with this gap in place. `zerotouch-automation`'s
-`core/user_data.py` treats the in-cluster K8s API as a fallback (behind a
-mounted ConfigMap file) and catches failures there as a non-fatal warning
-rather than failing the job — that fallback path wasn't even exercised in the
-run tested. This rule set is ported verbatim from v1's
-`default_vars_openshift_cnv.yaml`, so it's presumably been fine in production
-so far too. It would only matter for a lab that specifically depends on the
-`zt-runner-kubeconfig` Secret or `showroom-userdata` ConfigMap via that K8s-API
-fallback path. If you hit this, add a rule via `zero_touch_egress_lockdown_rules`
-(from the lab's `firewall.yaml`) rather than editing the fixed defaults.
+This was previously an uncovered gap, confirmed live against a provisioned
+CNV sandbox: both a raw `nc` to the internal API service IP and an
+authenticated `curl` from inside the namespace (using the pod's own mounted
+ServiceAccount token) timed out, blocking every pod in the namespace,
+including the bastion VM's `virt-launcher` pod, not just the showroom pod.
+It was previously assessed as "non-blocking in practice" because
+`zerotouch-automation`'s `core/user_data.py` treats the in-cluster K8s API
+as a non-fatal fallback (behind a mounted ConfigMap file) — but that
+assessment was wrong: with no request timeout on that call, a blocked
+connection hangs for minutes inside the app's startup handler, delaying
+showroom readiness by ~10 minutes after any pod restart that happens after
+lockdown is in place. See GPTEINFRA-18137 for the live confirmation.
 
 ## Why there's no removal task
 
